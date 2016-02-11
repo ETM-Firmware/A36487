@@ -73,6 +73,7 @@ void DoStateMachine(void) {
     _CONTROL_NOT_CONFIGURED = 1;
     PIN_CPU_HV_ENABLE_OUT = !OLL_CPU_HV_ENABLE;
     PIN_CPU_XRAY_ENABLE_OUT = !OLL_CPU_XRAY_ENABLE;
+    PIN_CPU_WARNING_LAMP_OUT = !OLL_CPU_WARNING_LAMP;
     psb_data.state_machine = STATE_WAIT_FOR_CONFIG;
     break;
 
@@ -81,9 +82,15 @@ void DoStateMachine(void) {
     _CONTROL_NOT_CONFIGURED = 1;
     PIN_CPU_HV_ENABLE_OUT = !OLL_CPU_HV_ENABLE;
     PIN_CPU_XRAY_ENABLE_OUT = !OLL_CPU_XRAY_ENABLE;
+    PIN_CPU_WARNING_LAMP_OUT = !OLL_CPU_WARNING_LAMP;
     while (psb_data.state_machine == STATE_WAIT_FOR_CONFIG) {
       DoA36487();
       DoStartupLEDs();
+
+      PIN_CPU_WARMUP_OUT = !OLL_CPU_WARMUP;
+      PIN_CPU_STANDBY_OUT = !OLL_CPU_STANDBY;
+      PIN_CPU_READY_OUT = !OLL_CPU_READY;
+      PIN_CPU_SUMFLT_OUT = OLL_CPU_SUMFLT;
       
       if ((psb_data.led_flash_counter >= LED_STARTUP_FLASH_TIME) && (psb_data.counter_config_received == 0b1111)) {
 	psb_data.state_machine = STATE_HV_OFF;
@@ -96,6 +103,7 @@ void DoStateMachine(void) {
     _CONTROL_NOT_READY = 0;
     PIN_CPU_HV_ENABLE_OUT = !OLL_CPU_HV_ENABLE;
     PIN_CPU_XRAY_ENABLE_OUT = !OLL_CPU_XRAY_ENABLE;
+    PIN_CPU_WARNING_LAMP_OUT = !OLL_CPU_WARNING_LAMP;
     while (psb_data.state_machine == STATE_HV_OFF) {
       DoA36487();
       
@@ -115,6 +123,7 @@ void DoStateMachine(void) {
     _CONTROL_NOT_READY = 0;
     PIN_CPU_HV_ENABLE_OUT = OLL_CPU_HV_ENABLE;
     PIN_CPU_XRAY_ENABLE_OUT = !OLL_CPU_XRAY_ENABLE;
+    PIN_CPU_WARNING_LAMP_OUT = !OLL_CPU_WARNING_LAMP;
     while (psb_data.state_machine == STATE_HV_ENABLE) {
       DoA36487();
       
@@ -138,9 +147,16 @@ void DoStateMachine(void) {
     _CONTROL_NOT_READY = 0;
     PIN_CPU_HV_ENABLE_OUT = OLL_CPU_HV_ENABLE;
     PIN_CPU_XRAY_ENABLE_OUT = OLL_CPU_XRAY_ENABLE;
+    PIN_CPU_WARNING_LAMP_OUT = !OLL_CPU_WARNING_LAMP;
     while (psb_data.state_machine == STATE_X_RAY_ENABLE) {
       DoA36487();
       
+      if (PIN_CUSTOMER_XRAY_ON_IN) {
+	PIN_CPU_WARNING_LAMP_OUT = OLL_CPU_WARNING_LAMP;
+      } else {
+	PIN_CPU_WARNING_LAMP_OUT = !OLL_CPU_WARNING_LAMP;
+      }
+
       if (ETMCanSlaveGetSyncMsgPulseSyncDisableXray() || ETMCanSlaveGetSyncMsgPulseSyncDisableHV() || (PIN_CUSTOMER_BEAM_ENABLE_IN == !ILL_CUSTOMER_BEAM_ENABLE)) {
 	psb_data.state_machine = STATE_HV_ENABLE;
       }
@@ -157,6 +173,7 @@ void DoStateMachine(void) {
     _CONTROL_NOT_READY = 1;
     PIN_CPU_HV_ENABLE_OUT = !OLL_CPU_HV_ENABLE;
     PIN_CPU_XRAY_ENABLE_OUT = !OLL_CPU_XRAY_ENABLE;
+    PIN_CPU_WARNING_LAMP_OUT = !OLL_CPU_WARNING_LAMP;
     while (psb_data.state_machine == STATE_FAULT) {
       DoA36487();
       
@@ -172,6 +189,7 @@ void DoStateMachine(void) {
     _CONTROL_NOT_READY = 1;
     PIN_CPU_HV_ENABLE_OUT = !OLL_CPU_HV_ENABLE;
     PIN_CPU_XRAY_ENABLE_OUT = !OLL_CPU_XRAY_ENABLE;
+    PIN_CPU_WARNING_LAMP_OUT = !OLL_CPU_WARNING_LAMP;
     psb_data.state_machine = STATE_UNKNOWN;
     while (1) {
       DoA36487();
@@ -316,19 +334,19 @@ void DoA36487(void) {
 
     
     // -------------- UPDATE LED AND STATUS LINE OUTPUTS ---------------- //
-    if (LED_WARMUP_STATUS) {
+    if (ETMCanSlaveGetSyncMsgPulseSyncWarmupLED()) {
       PIN_CPU_WARMUP_OUT = OLL_CPU_WARMUP;
     } else {
       PIN_CPU_WARMUP_OUT = !OLL_CPU_WARMUP;
     }
     
-    if (LED_STANDBY_STATUS) {
-      //PIN_LED_STANDBY = OLL_LED_ON;
+    if (ETMCanSlaveGetSyncMsgPulseSyncStandbyLED()) {
+      PIN_CPU_STANDBY_OUT = OLL_CPU_STANDBY;
     } else {
-      //PIN_LED_STANDBY = !OLL_LED_ON;
+      PIN_CPU_STANDBY_OUT = !OLL_CPU_STANDBY;
     }
     
-    if (LED_READY_STATUS) {
+    if (ETMCanSlaveGetSyncMsgPulseSyncReadyLED()) {
       PIN_LED_READY = OLL_LED_ON;
       PIN_CPU_READY_OUT = OLL_CPU_READY;
     } else {
@@ -336,7 +354,7 @@ void DoA36487(void) {
       PIN_CPU_READY_OUT = !OLL_CPU_READY;
     }
   
-    if (LED_SUM_FAULT_STATUS) {
+    if (ETMCanSlaveGetSyncMsgPulseSyncFaultLED()) {
       //PIN_LED_SUMFLT = OLL_LED_ON;
       PIN_CPU_SUMFLT_OUT = OLL_CPU_SUMFLT;
     } else {

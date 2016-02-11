@@ -202,16 +202,16 @@ typedef struct{
 // Customer Status pins
 #define PIN_CPU_STANDBY_OUT                 _RB5
 #define TRIS_PIN_CPU_STANDBY_OUT            _TRISB5
-#define OLL_CPU_STANDBY                     1
+#define OLL_CPU_STANDBY                     0
 #define PIN_CPU_READY_OUT                   _RB4
 #define TRIS_PIN_CPU_READY_OUT              _TRISB4
-#define OLL_CPU_READY                       1
+#define OLL_CPU_READY                       0
 #define TRIS_PIN_CPU_SUMFLT_OUT             _TRISD0
 #define PIN_CPU_SUMFLT_OUT                  _RD0
-#define OLL_CPU_SUMFLT                      1
+#define OLL_CPU_SUMFLT                      0
 #define TRIS_PIN_CPU_WARMUP_OUT             _TRISD10
 #define PIN_CPU_WARMUP_OUT                  _RD10
-#define OLL_CPU_WARMUP                      1
+#define OLL_CPU_WARMUP                      0
 
 //     LEDS
 #define PIN_LED_READY                       _LATG13
