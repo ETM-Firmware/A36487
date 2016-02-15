@@ -150,6 +150,11 @@ void DoStateMachine(void) {
     PIN_CPU_WARNING_LAMP_OUT = !OLL_CPU_WARNING_LAMP;
     while (psb_data.state_machine == STATE_X_RAY_ENABLE) {
       DoA36487();
+
+      if ((_STATUS_TRIGGER_STAYED_ON) && (PIN_TRIG_INPUT != ILL_TRIG_ON)) {
+	_STATUS_TRIGGER_STAYED_ON = 0;
+	PIN_CPU_XRAY_ENABLE_OUT = OLL_CPU_XRAY_ENABLE;
+      }
       
       if (PIN_CUSTOMER_XRAY_ON_IN) {
 	PIN_CPU_WARNING_LAMP_OUT = OLL_CPU_WARNING_LAMP;
@@ -285,31 +290,51 @@ void DoA36487(void) {
   }
   
   if (PIN_PANEL_IN == ILL_PANEL_OPEN) {
-    _FAULT_PANEL = 1;
+    _STATUS_PANEL_OPEN = 1;
+  } else {
+    _STATUS_PANEL_OPEN = 0;
   }
   
   if (PIN_KEY_LOCK_IN == ILL_KEY_LOCK_FAULT) {
-    _FAULT_KEYLOCK = 1;
+    _STATUS_KEYLOCK_OPEN = 1;
+  } else {
+    _STATUS_KEYLOCK_OPEN = 0;
   }
 
   if (PIN_PFN_OK == ILL_PIN_PFN_FAULT) {
     _FAULT_PFN_STATUS = 1;
+  } else {
+    if (ETMCanSlaveGetSyncMsgResetEnable()) {
+      _FAULT_PFN_STATUS = 0;
+    }
   }
   
   if (PIN_RF_OK == ILL_PIN_RF_FAULT) {
     _FAULT_RF_STATUS = 1;
+  } else {
+    if (ETMCanSlaveGetSyncMsgResetEnable()) {
+      _FAULT_RF_STATUS = 0;
+    }
   }
 
   if (PIN_XRAY_CMD_MISMATCH_IN == !ILL_XRAY_CMD_MISMATCH) {
     _FAULT_TIMING_MISMATCH = 1;
+  } else {
+    if (ETMCanSlaveGetSyncMsgResetEnable()) {
+      _FAULT_TIMING_MISMATCH = 0;
+    }
+  }
+
+  if (ETMCanSlaveGetComFaultStatus()) {
+    _FAULT_CAN_COMMUNICATION_LATCHED = 1;
+  } else {
+    if (ETMCanSlaveGetSyncMsgResetEnable()) {
+      _FAULT_CAN_COMMUNICATION_LATCHED = 0;
+    }
   }
 
   // _FAULT_TRIGGER_STAYED_ON is set by INT3 Interrupt // DPARKER Look at this more
 
-  if ((PIN_CUSTOMER_XRAY_ON_IN) && (!PIN_CUSTOMER_BEAM_ENABLE_IN)) {
-    _FAULT_X_RAY_ON_WIHTOUT_HV = 1;
-  }
-  
 
 
   // ------------- UPDATE STATUS -------------------- //
@@ -384,8 +409,8 @@ void DoA36487(void) {
     ETMCanSlaveSetDebugRegister(6, (grid_start_low3 << 8) + grid_start_low2);
     ETMCanSlaveSetDebugRegister(7, (grid_start_low1 << 8) + grid_start_low0);
     ETMCanSlaveSetDebugRegister(8, (pfn_delay_low << 8) + dose_sample_delay_low);
-    ETMCanSlaveSetDebugRegister(9, (grid_stop_low3 << 8) + grid_stop_low2);
-    ETMCanSlaveSetDebugRegister(10, (grid_stop_low1 << 8) + grid_stop_low0);
+    ETMCanSlaveSetDebugRegister(9, data_grid_start);
+    ETMCanSlaveSetDebugRegister(10, data_grid_stop);
     ETMCanSlaveSetDebugRegister(0xb, psb_data.pulses_on);
     ETMCanSlaveSetDebugRegister(0xC, psb_data.last_period);
     ETMCanSlaveSetDebugRegister(0xD, log_data_rep_rate_deci_hertz);
@@ -435,7 +460,8 @@ void DoPostTriggerProcess(void) {
     ReadTrigPulseWidth();
     ReadAndSetEnergy();
   } else {  // if pulse trig stays on, set to minimum dose and flag fault
-    _FAULT_TRIGGER_STAYED_ON = 1;
+    _STATUS_TRIGGER_STAYED_ON = 1;
+    PIN_CPU_XRAY_ENABLE_OUT = !OLL_CPU_XRAY_ENABLE;
     trigger_width_filtered = 0;
   }
   
@@ -695,9 +721,8 @@ void ProgramShiftRegisters(void) {
   if (PIN_TRIG_INPUT != ILL_TRIG_ON) {
     PIN_PW_HOLD_LOWRESET_OUT = OLL_PW_HOLD_LOWRESET;   // clear reset only when trig pulse is low
     Nop();
-    _FAULT_TRIGGER_STAYED_ON = 0;
   } else {
-    _FAULT_TRIGGER_STAYED_ON = 1;
+    _STATUS_TRIGGER_STAYED_ON = 1;  // DPARKER IS THIS NEEDED???
   }
 }
 
