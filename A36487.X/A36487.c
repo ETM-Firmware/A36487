@@ -266,6 +266,15 @@ void InitializeA36487(void) {
   
   ETMCanSlaveInitialize(CAN_PORT_1, FCY, ETM_CAN_ADDR_PULSE_SYNC_BOARD, _PIN_RG14, 4, _PIN_RG12, _PIN_RC1);
   ETMCanSlaveLoadConfiguration(36487, 251, FIRMWARE_AGILE_REV, FIRMWARE_BRANCH, FIRMWARE_BRANCH_REV);
+  
+  _STATUS_CUSTOMER_HV_DISABLE = 1;
+  
+  _STATUS_CUSTOMER_X_RAY_DISABLE = 1;
+  
+  _STATUS_LOW_MODE_OVERRIDE = 1;
+  
+  _STATUS_HIGH_MODE_OVERRIDE = 0;
+
 }
 
 unsigned int trigger_counter;
@@ -527,9 +536,9 @@ void ReadTrigPulseWidth(void) {
 unsigned char FilterTrigger(unsigned char param) {
   int x;
   
-  //Establish Dose Levels to reduce jitter and provide consistent dose vs trigger width
-  //Every bit represents 20ns pulse width change on the electron gun
-  //Every bit also represents a 200ns pulse width change from the customer
+  // Establish Dose Levels to reduce jitter and provide consistent dose vs trigger width
+  // Every bit represents 20ns pulse width change on the electron gun
+  // Every bit also represents a 200ns pulse width change from the customer
   if (param > (DOSE_LEVELS - 1)) {
     for (x = 0; x <= (param % DOSE_LEVELS); x++)
       param--;
@@ -537,7 +546,7 @@ unsigned char FilterTrigger(unsigned char param) {
     param = 0;
   }
   
-  //Ensure that at least 15 of the same width pulses in a row only change the sampled width
+  // Ensure that at least 15 of the same width pulses in a row only change the sampled width
   if (param != psb_data.last_trigger_filtered) {
     change_pulse_width_counter++;
     if (change_pulse_width_counter < 15) {
