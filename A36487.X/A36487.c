@@ -32,6 +32,8 @@ void InitPins(void); // DPARKER Change this to standard defenitions
 
 
 
+#define __COMPILE_MODE_2_5
+
 
 
 
@@ -154,6 +156,14 @@ void DoStateMachine(void) {
       if ((_STATUS_TRIGGER_STAYED_ON) && (PIN_TRIG_INPUT != ILL_TRIG_ON)) {
 	_STATUS_TRIGGER_STAYED_ON = 0;
 	PIN_CPU_XRAY_ENABLE_OUT = OLL_CPU_XRAY_ENABLE;
+      }
+
+      if (PIN_LOW_MODE_IN == PIN_HIGH_MODE_IN) {
+	PIN_CPU_XRAY_ENABLE_OUT = !OLL_CPU_XRAY_ENABLE;
+      } else {
+	if (!_STATUS_TRIGGER_STAYED_ON) {
+	  PIN_CPU_XRAY_ENABLE_OUT = OLL_CPU_XRAY_ENABLE;
+	}
       }
       
       if (PIN_CUSTOMER_XRAY_ON_IN) {
@@ -569,6 +579,35 @@ void ReadAndSetEnergy() {
     DPAPKER - Adjust for single energy mode???
 
   */
+#ifdef __COMPILE_MODE_2_5
+  PIN_AFC_TRIGGER_OK_OUT = OLL_AFC_TRIGGER_OK;    // Allow Trigger Pulse to the AFC
+  
+  if ((PIN_LOW_MODE_IN == LOW) && (PIN_HIGH_MODE_IN == LOW)) {
+    // NO X-RAY PRODUCTION
+    //PIN_CPU_XRAY_ENABLE_OUT = !OLL_CPU_XRAY_ENABLE; // DPARKER THIS WILL NOT WORK AS INTENDED
+    psb_data.energy = HI;
+    return;
+  }
+  if ((PIN_LOW_MODE_IN == HI) && (PIN_HIGH_MODE_IN == HI)) {
+    // NO X-RAY PRODUCTION
+    //PIN_CPU_XRAY_ENABLE_OUT = !OLL_CPU_XRAY_ENABLE; // DPARKER THIS WILL NOT WORK AS INTENDED
+    psb_data.energy = HI;
+    return;
+  }
+  if ((PIN_LOW_MODE_IN == LOW) && (PIN_HIGH_MODE_IN == HI)) {
+    // X-RAY PRODUCTION
+    psb_data.energy = HI;
+    return;
+  }
+  if ((PIN_LOW_MODE_IN == HI) && (PIN_HIGH_MODE_IN == LOW)) {
+    // X-RAY PRODUCTION
+    psb_data.energy = LOW;
+    return;
+  }
+
+
+#else
+  /*
   if ((PIN_LOW_MODE_IN == HI) && (PIN_HIGH_MODE_IN == HI)) {
     if (PIN_ENERGY_CMD_IN1 == HI) {
       PIN_AFC_TRIGGER_OK_OUT = OLL_AFC_TRIGGER_OK;    //Trigger the AFC
@@ -594,6 +633,9 @@ void ReadAndSetEnergy() {
       psb_data.energy = HI;
     }
   }
+  */
+#endif
+
 }
 
 
