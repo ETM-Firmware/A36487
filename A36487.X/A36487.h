@@ -64,15 +64,16 @@ typedef struct{
 #define _FAULT_CAN_COMMUNICATION_LATCHED           _FAULT_1
 #define _FAULT_RF_STATUS                           _FAULT_2
 #define _FAULT_PFN_STATUS                          _FAULT_3
-
+#define _FAULT_PANEL_OPEN                         _FAULT_5
+#define _FAULT_KEYLOCK_OPEN                       _FAULT_6
 
 #define _STATUS_CUSTOMER_HV_DISABLE                _WARNING_0
 #define _STATUS_CUSTOMER_X_RAY_DISABLE             _WARNING_1
 #define _STATUS_LOW_MODE_OVERRIDE                  _WARNING_2
 #define _STATUS_HIGH_MODE_OVERRIDE                 _WARNING_3
 #define _STATUS_PERSONALITY_READ_COMPLETE          _WARNING_4
-#define _STATUS_PANEL_OPEN                         _WARNING_5
-#define _STATUS_KEYLOCK_OPEN                       _WARNING_6
+//#define _STATUS_PANEL_OPEN                         _WARNING_5
+//#define _STATUS_KEYLOCK_OPEN                       _WARNING_6
 #define _STATUS_TRIGGER_STAYED_ON                  _WARNING_7
 
 
@@ -180,11 +181,11 @@ typedef struct{
 
 #define TRIS_PIN_KEY_LOCK_IN                _TRISF7	 
 #define PIN_KEY_LOCK_IN                     _RF7
-#define ILL_KEY_LOCK_FAULT                  0
+#define ILL_KEY_LOCK_FAULT                  1
 
 #define TRIS_PIN_PANEL_IN                   _TRISF8	
 #define PIN_PANEL_IN                        _RF8
-#define ILL_PANEL_OPEN                      0
+#define ILL_PANEL_OPEN                      1
 
 // CONTROL to board A35487
 #define TRIS_PIN_CUSTOMER_BEAM_ENABLE_IN    _TRISG2

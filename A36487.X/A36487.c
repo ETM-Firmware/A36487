@@ -309,15 +309,19 @@ void DoA36487(void) {
   }
   
   if (PIN_PANEL_IN == ILL_PANEL_OPEN) {
-    _STATUS_PANEL_OPEN = 1;
+    _FAULT_PANEL_OPEN = 1;
   } else {
-    _STATUS_PANEL_OPEN = 0;
+    if (ETMCanSlaveGetSyncMsgResetEnable()) {
+      _FAULT_PANEL_OPEN = 0;
+    }
   }
   
   if (PIN_KEY_LOCK_IN == ILL_KEY_LOCK_FAULT) {
-    _STATUS_KEYLOCK_OPEN = 1;
+    _FAULT_KEYLOCK_OPEN = 1;
   } else {
-    _STATUS_KEYLOCK_OPEN = 0;
+    if (ETMCanSlaveGetSyncMsgResetEnable()) {
+      _FAULT_KEYLOCK_OPEN = 0;
+    }
   }
 
   if (PIN_PFN_OK == ILL_PIN_PFN_FAULT) {
