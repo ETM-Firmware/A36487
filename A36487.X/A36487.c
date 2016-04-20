@@ -19,6 +19,7 @@ void ReadAndSetEnergy(void);
 void ProgramShiftRegisters(void);
 unsigned int GetInterpolationValue(unsigned int low_point, unsigned int high_point, unsigned low_value, unsigned high_value, unsigned point);
 unsigned char ReadDosePersonality(void);
+void ResetCounter(void);
 /*
   Return:
   0x00 = No dose personailty installed
@@ -421,6 +422,9 @@ void DoA36487(void) {
       // Set the rep rate to zero
       log_data_rep_rate_deci_hertz = 0;
     }
+    if (_T1IF) {
+      ResetCounter();
+    }
   
     // Update the debugging Data
     ETMCanSlaveSetDebugRegister(0, (grid_start_high3 << 8) + grid_start_high2);
@@ -640,6 +644,12 @@ void ReadAndSetEnergy() {
   */
 #endif
 
+}
+
+void ResetCounter(void) {
+  PIN_PW_CLR_CNT_OUT = OLL_PW_CLR_CNT;
+  __delay32(100);
+  PIN_PW_CLR_CNT_OUT = !OLL_PW_CLR_CNT;
 }
 
 
