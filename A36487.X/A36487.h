@@ -39,6 +39,9 @@ typedef struct{
     unsigned char pfn_delay;
     unsigned char afc_delay;
     unsigned char magnetron_current_sample_delay;
+
+    TYPE_DIGITAL_INPUT pfn_fan_fault;
+    
     
     unsigned char personality;      //0=UL, 1=L, 2=M, 3=H
     unsigned char last_trigger_filtered;

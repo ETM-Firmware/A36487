@@ -283,8 +283,11 @@ void InitializeA36487(void) {
   _STATUS_LOW_MODE_OVERRIDE = 1;
   
   _STATUS_HIGH_MODE_OVERRIDE = 0;
-
+  
+  ETMDigitalInitializeInput(&psb_data.pfn_fan_fault, ILL_PIN_PFN_FAULT, 50);
 }
+
+
 
 unsigned int trigger_counter;
 
@@ -323,7 +326,9 @@ void DoA36487(void) {
     }
   }
 
-  if (PIN_PFN_OK == ILL_PIN_PFN_FAULT) {
+  ETMDigitalUpdateInput(&psb_data.pfn_fan_fault, PIN_PFN_OK);
+  
+  if (ETMDigitalFilteredOutput(&psb_data.pfn_fan_fault) == ILL_PIN_PFN_FAULT) {
     _FAULT_PFN_STATUS = 1;
   } else {
     if (ETMCanSlaveGetSyncMsgResetEnable()) {
