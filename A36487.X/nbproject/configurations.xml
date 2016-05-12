@@ -37,9 +37,8 @@
       <compileType>
         <linkerTool>
           <linkerLibItems>
-            <linkerLibFileItem>../../ETM_LIBRARY/Version_01/lib/ETM_LINAC_CAN.a</linkerLibFileItem>
-            <linkerLibFileItem>../../ETM_LIBRARY/Version_01/lib/ETM_EEPROM_INTERNAL.a</linkerLibFileItem>
-            <linkerLibFileItem>../../ETM_LIBRARY/Version_01/lib/ETM_CORE.a</linkerLibFileItem>
+            <linkerLibFileItem>../../ETM_LIBRARY/Version_02/lib/ETM_LINAC_CAN_30F6014A.a</linkerLibFileItem>
+            <linkerLibFileItem>../../ETM_LIBRARY/Version_02/lib/ETM_CORE_30F6014A.a</linkerLibFileItem>
           </linkerLibItems>
         </linkerTool>
         <archiverTool>
@@ -168,7 +167,7 @@
       </C30-LD>
       <C30Global>
         <property key="common-include-directories"
-                  value="..\..\ETM_LIBRARY\Version_01\inc"/>
+                  value="..\..\ETM_LIBRARY\Version_02\inc"/>
         <property key="dual-boot-partition" value="0"/>
         <property key="fast-math" value="false"/>
         <property key="generic-16-bit" value="false"/>

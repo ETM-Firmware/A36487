@@ -272,9 +272,7 @@ void InitializeA36487(void) {
   }
 
 
-#define AGILE_REV      77
-#define SERIAL_NUMBER  100
-  
+  ETMEEPromUseInternal();
   ETMCanSlaveInitialize(CAN_PORT_1, FCY, ETM_CAN_ADDR_PULSE_SYNC_BOARD, _PIN_RG14, 4, _PIN_RG12, _PIN_RC1);
   ETMCanSlaveLoadConfiguration(36487, 251, FIRMWARE_AGILE_REV, FIRMWARE_BRANCH, FIRMWARE_BRANCH_REV);
   
