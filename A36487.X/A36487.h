@@ -46,6 +46,10 @@ typedef struct{
     unsigned char personality;      //0=UL, 1=L, 2=M, 3=H
     unsigned char last_trigger_filtered;
     unsigned char energy;
+
+    unsigned char trigger_index;
+
+
 } PSB_DATA;
 
 //Definitions

@@ -3,23 +3,27 @@
 // Global Variables
 PSB_DATA psb_data;
 
-//Limited scope variables
-unsigned char change_pulse_width_counter;
-const unsigned int  dose_intensities[4] = {15, 95, 175, 255};  // fixed constants
-
-
 void DoStateMachine(void);
 void InitializeA36487(void);
 void DoA36487(void);
 void DoStartupLEDs(void);
 void DoPostTriggerProcess(void);
 void ReadTrigPulseWidth(void);
-unsigned char FilterTrigger(unsigned char param);
 void ReadAndSetEnergy(void);
 void ProgramShiftRegisters(void);
 unsigned int GetInterpolationValue(unsigned int low_point, unsigned int high_point, unsigned low_value, unsigned high_value, unsigned point);
 unsigned char ReadDosePersonality(void);
 void ResetCounter(void);
+
+unsigned char InterpolateValue(unsigned char select, unsigned char index);
+unsigned char CalcTriggerIndex(unsigned char trigger_reading);
+#define GRID_START_HIGH_ENERGY      0
+#define GRID_STOP_HIGH_ENERGY       1
+#define GRID_START_LOW_ENERGY       2
+#define GRID_STOP_LOW_ENERGY        3
+
+
+
 /*
   Return:
   0x00 = No dose personailty installed
@@ -545,42 +549,40 @@ void ReadTrigPulseWidth(void) {
   } else {
     trigger_width = data & 0xFF;
   }
-  trigger_width_filtered = FilterTrigger(trigger_width);
+
+  psb_data.trigger_index = CalcTriggerIndex(trigger_width);
+  trigger_width_filtered = psb_data.trigger_index * 10;
+
   
+  // DPARKER, what is the point of this???
+  /*
   if (trigger_width_filtered < 245) {   //signify to pfn control board what mode to expect
     PIN_MODE_OUT = OLL_MODE_PORTAL;   //so it can use a different target
   } else {                                  //current setpoint for low energy
     PIN_MODE_OUT = OLL_MODE_GANTRY;
   }
+  */
 }
 
-unsigned char FilterTrigger(unsigned char param) {
-  int x;
+
+
+
+
+
+unsigned char CalcTriggerIndex(unsigned char trigger_reading) {
+  unsigned char val;
+  unsigned char rem;
+
+  val = trigger_reading / 10;
+  rem = trigger_reading % 10;
   
-  // Establish Dose Levels to reduce jitter and provide consistent dose vs trigger width
-  // Every bit represents 20ns pulse width change on the electron gun
-  // Every bit also represents a 200ns pulse width change from the customer
-  if (param > (DOSE_LEVELS - 1)) {
-    for (x = 0; x <= (param % DOSE_LEVELS); x++)
-      param--;
-  } else {
-    param = 0;
+  if (rem >= 5) {
+    val++;
   }
-  
-  // Ensure that at least 15 of the same width pulses in a row only change the sampled width
-  if (param != psb_data.last_trigger_filtered) {
-    change_pulse_width_counter++;
-    if (change_pulse_width_counter < 15) {
-      param = psb_data.last_trigger_filtered;
-    } else {
-      psb_data.last_trigger_filtered = param;
-    }
-  } else {
-    change_pulse_width_counter = 0;
-  }
-  
-  return param;
+  val = val;
+  return val;
 }
+
 
 
 void ReadAndSetEnergy() {
@@ -668,69 +670,21 @@ void ProgramShiftRegisters(void) {
   Nop();
   
   if (psb_data.energy == HI) {
-    psb_data.dose_sample_delay    = dose_sample_delay_high;
-    psb_data.pfn_delay   = pfn_delay_high;
-    psb_data.afc_delay   = afc_delay_high;
+    psb_data.dose_sample_delay              = dose_sample_delay_high;
+    psb_data.pfn_delay                      = pfn_delay_high;
+    psb_data.afc_delay                      = afc_delay_high;
     psb_data.magnetron_current_sample_delay = magnetron_current_sample_delay_high;
+    data_grid_start                         = InterpolateValue(GRID_START_HIGH_ENERGY, psb_data.trigger_index);
+    data_grid_stop                          = InterpolateValue(GRID_STOP_HIGH_ENERGY, psb_data.trigger_index);
   } else {
-    psb_data.dose_sample_delay    = dose_sample_delay_low;
-    psb_data.pfn_delay   = pfn_delay_low;
-    psb_data.afc_delay   = afc_delay_low;
+    psb_data.dose_sample_delay              = dose_sample_delay_low;
+    psb_data.pfn_delay                      = pfn_delay_low;
+    psb_data.afc_delay                      = afc_delay_low;
     psb_data.magnetron_current_sample_delay = magnetron_current_sample_delay_low;
+    data_grid_start                         = InterpolateValue(GRID_START_LOW_ENERGY, psb_data.trigger_index);
+    data_grid_stop                          = InterpolateValue(GRID_STOP_LOW_ENERGY, psb_data.trigger_index);
   }
-     
-  
-    // do inteplation for grid delay and grid width
-  for (p = 0; p < 4; p++) {
-    if (trigger_width_filtered <= dose_intensities[p]) break;
-  }
-    
-  if (p == 0) {
-    if (psb_data.energy == HI) {
-      data_grid_start = grid_start_high0;
-      data_grid_stop = grid_stop_high0;
-    } else {
-      data_grid_start = grid_start_low0;
-      data_grid_stop = grid_stop_low0;
-    }
-  } else if (p >= 4) {
-    if (psb_data.energy == HI) {
-      data_grid_start = grid_start_high3;
-      data_grid_stop = grid_stop_high3;
-    } else {
-      data_grid_start = grid_start_low3;
-      data_grid_stop = grid_stop_low3;
-    }
-  } else { // interpolation
-    if (p == 1) {
-      if (psb_data.energy == HI) {
-	data_grid_start = GetInterpolationValue(dose_intensities[p - 1], dose_intensities[p], grid_start_high0, grid_start_high1, trigger_width_filtered);
-	data_grid_stop = GetInterpolationValue(dose_intensities[p - 1], dose_intensities[p], grid_stop_high0, grid_stop_high1, trigger_width_filtered);
-      } else {
-	data_grid_start = GetInterpolationValue(dose_intensities[p - 1], dose_intensities[p], grid_start_low0, grid_start_low1, trigger_width_filtered);
-	data_grid_stop = GetInterpolationValue(dose_intensities[p - 1], dose_intensities[p], grid_stop_low0, grid_stop_low1, trigger_width_filtered);
-      }
-    } else if (p == 2) {
-      if (psb_data.energy == HI) {
-	data_grid_start = GetInterpolationValue(dose_intensities[p - 1], dose_intensities[p], grid_start_high1, grid_start_high2, trigger_width_filtered);
-	data_grid_stop = GetInterpolationValue(dose_intensities[p - 1], dose_intensities[p], grid_stop_high1, grid_stop_high2, trigger_width_filtered);
-      }
-      else {
-	data_grid_start = GetInterpolationValue(dose_intensities[p - 1], dose_intensities[p], grid_start_low1, grid_start_low2, trigger_width_filtered);
-	data_grid_stop = GetInterpolationValue(dose_intensities[p - 1], dose_intensities[p], grid_stop_low1, grid_stop_low2, trigger_width_filtered);
-      }
-    }
-    else if (p == 3) {
-      if (psb_data.energy == HI) {
-	data_grid_start = GetInterpolationValue(dose_intensities[p - 1], dose_intensities[p], grid_start_high2, grid_start_high3, trigger_width_filtered);
-	data_grid_stop = GetInterpolationValue(dose_intensities[p - 1], dose_intensities[p], grid_stop_high2, grid_stop_high3, trigger_width_filtered);
-      } else {
-	data_grid_start = GetInterpolationValue(dose_intensities[p - 1], dose_intensities[p], grid_start_low2, grid_start_low3, trigger_width_filtered);
-	data_grid_stop = GetInterpolationValue(dose_intensities[p - 1], dose_intensities[p], grid_stop_low2, grid_stop_low3, trigger_width_filtered);
-      }
-    }
-  }
-  
+
   for (p = 0; p < 6; p++) {
     if (p == 0) {
       temp = data_grid_stop;     //Grid Width
@@ -795,23 +749,59 @@ void ProgramShiftRegisters(void) {
 }
 
 
-// calculate the interpolation value
-unsigned int GetInterpolationValue(unsigned int low_point, unsigned int high_point, unsigned low_value, unsigned high_value, unsigned point)
-{
-   double dtemp, dslope;
-   unsigned int ret = low_value;
-
-   if (high_point > low_point)  // high point has to be bigger
-   {
-   	dslope = ((double)high_value - (double)low_value) / ((double)high_point - (double)low_point);
-        dtemp = (double)point - (double)low_point;
-        dtemp *= dslope;
-        dtemp += low_value;
-        ret = (unsigned)dtemp;
-   }
-   return (ret);
+unsigned char InterpolateValue(unsigned char select, unsigned char index) {
+  unsigned int val_0 = 0;
+  unsigned int val_1 = 0;
+  unsigned int val_2 = 0;
+  unsigned int val_3 = 0;
+  unsigned int result = 0;
+  
+  switch (select) 
+    {
+    case GRID_START_HIGH_ENERGY:
+      val_0 = grid_start_high0;
+      val_1 = grid_start_high1;
+      val_2 = grid_start_high2;
+      val_3 = grid_start_high3;
+      break;
+      
+    case GRID_STOP_HIGH_ENERGY:
+      val_0 = grid_stop_high0;
+      val_1 = grid_stop_high1;
+      val_2 = grid_stop_high2;
+      val_3 = grid_stop_high3;
+      break;
+      
+    case GRID_START_LOW_ENERGY:
+      val_0 = grid_start_low0;
+      val_1 = grid_start_low1;
+      val_2 = grid_start_low2;
+      val_3 = grid_start_low3;
+      break;
+      
+    case GRID_STOP_LOW_ENERGY:
+      val_0 = grid_stop_low0;
+      val_1 = grid_stop_low1;
+      val_2 = grid_stop_low2;
+      val_3 = grid_stop_low3;
+      break;
+    }
+  
+  if (index < 9) {
+    result   = val_0 * (9 - index);
+    result  += val_1 * (index - 1);
+    result >>= 3;
+  } else if (index < 17) {
+    result   = val_1 * (17 - index);
+    result  += val_2 * (index - 9);
+    result >>= 3;
+  } else if (index < 25) {
+    result   = val_2 * (25 - index);
+    result  += val_3 * (index - 17);
+    result >>= 3;
+  }
+  return result;
 }
-
 
 unsigned char ReadDosePersonality() {
       unsigned int data;
