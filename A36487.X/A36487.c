@@ -434,9 +434,9 @@ void DoA36487(void) {
     }
   
     // Update the debugging Data
-    ETMCanSlaveSetDebugRegister(0, (grid_start_high3 << 8) + grid_start_high2);
-    ETMCanSlaveSetDebugRegister(1, (grid_start_high1 << 8) + grid_start_high0);
-    ETMCanSlaveSetDebugRegister(2, (pfn_delay_high << 8) + dose_sample_delay_high);
+    //ETMCanSlaveSetDebugRegister(0, (grid_start_high3 << 8) + grid_start_high2);
+    //ETMCanSlaveSetDebugRegister(1, (grid_start_high1 << 8) + grid_start_high0);
+    //ETMCanSlaveSetDebugRegister(2, (pfn_delay_high << 8) + dose_sample_delay_high);
     ETMCanSlaveSetDebugRegister(3, (grid_stop_high3 << 8) + grid_stop_high2);
     ETMCanSlaveSetDebugRegister(4, (grid_stop_high1 << 8) + grid_stop_high0);
     ETMCanSlaveSetDebugRegister(5, (afc_delay_high << 8) + magnetron_current_sample_delay_high);
@@ -551,7 +551,7 @@ void ReadTrigPulseWidth(void) {
   }
 
   psb_data.trigger_index = CalcTriggerIndex(trigger_width);
-  trigger_width_filtered = psb_data.trigger_index * 10;
+  trigger_width_filtered = psb_data.trigger_index;
 
   
   // DPARKER, what is the point of this???
@@ -576,10 +576,14 @@ unsigned char CalcTriggerIndex(unsigned char trigger_reading) {
   val = trigger_reading / 10;
   rem = trigger_reading % 10;
   
+  ETMCanSlaveSetDebugRegister(0, trigger_reading);
+  ETMCanSlaveSetDebugRegister(1, val);
+  ETMCanSlaveSetDebugRegister(2, rem);
+
   if (rem >= 5) {
     val++;
   }
-  val = val;
+
   return val;
 }
 
@@ -756,6 +760,10 @@ unsigned char InterpolateValue(unsigned char select, unsigned char index) {
   unsigned int val_3 = 0;
   unsigned int result = 0;
   
+  if (index == 26) {
+    index = 25;
+  }
+
   switch (select) 
     {
     case GRID_START_HIGH_ENERGY:
@@ -795,7 +803,7 @@ unsigned char InterpolateValue(unsigned char select, unsigned char index) {
     result   = val_1 * (17 - index);
     result  += val_2 * (index - 9);
     result >>= 3;
-  } else if (index < 25) {
+  } else if (index <= 25) {
     result   = val_2 * (25 - index);
     result  += val_3 * (index - 17);
     result >>= 3;
