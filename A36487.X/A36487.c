@@ -158,17 +158,10 @@ void DoStateMachine(void) {
     while (psb_data.state_machine == STATE_X_RAY_ENABLE) {
       DoA36487();
 
-      if ((_STATUS_TRIGGER_STAYED_ON) && (PIN_TRIG_INPUT != ILL_TRIG_ON)) {
-	_STATUS_TRIGGER_STAYED_ON = 0;
-	PIN_CPU_XRAY_ENABLE_OUT = OLL_CPU_XRAY_ENABLE;
-      }
-
       if (PIN_LOW_MODE_IN == PIN_HIGH_MODE_IN) {
 	PIN_CPU_XRAY_ENABLE_OUT = !OLL_CPU_XRAY_ENABLE;
       } else {
-	if (!_STATUS_TRIGGER_STAYED_ON) {
-	  PIN_CPU_XRAY_ENABLE_OUT = OLL_CPU_XRAY_ENABLE;
-	}
+	PIN_CPU_XRAY_ENABLE_OUT = OLL_CPU_XRAY_ENABLE;
       }
       
       if (PIN_CUSTOMER_XRAY_ON_IN) {
@@ -364,6 +357,11 @@ void DoA36487(void) {
     }
   }
 
+  if (ETMCanSlaveGetSyncMsgResetEnable() && (PIN_TRIG_INPUT != ILL_TRIG_ON)) {
+    _FAULT_TRIGGER_STAYED_ON = 0;
+    _STATUS_TRIGGER_STAYED_ON = 0;
+  }
+
   // _FAULT_TRIGGER_STAYED_ON is set by INT3 Interrupt // DPARKER Look at this more
 
 
@@ -495,6 +493,7 @@ void DoPostTriggerProcess(void) {
     ReadAndSetEnergy();
   } else {  // if pulse trig stays on, set to minimum dose and flag fault
     _STATUS_TRIGGER_STAYED_ON = 1;
+    _FAULT_TRIGGER_STAYED_ON = 1;
     PIN_CPU_XRAY_ENABLE_OUT = !OLL_CPU_XRAY_ENABLE;
     trigger_width_filtered = 0;
   }
@@ -747,8 +746,6 @@ void ProgramShiftRegisters(void) {
   if (PIN_TRIG_INPUT != ILL_TRIG_ON) {
     PIN_PW_HOLD_LOWRESET_OUT = OLL_PW_HOLD_LOWRESET;   // clear reset only when trig pulse is low
     Nop();
-  } else {
-    _STATUS_TRIGGER_STAYED_ON = 1;  // DPARKER IS THIS NEEDED???
   }
 }
 

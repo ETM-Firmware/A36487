@@ -71,8 +71,10 @@ typedef struct{
 #define _FAULT_CAN_COMMUNICATION_LATCHED           _FAULT_1
 #define _FAULT_RF_STATUS                           _FAULT_2
 #define _FAULT_PFN_STATUS                          _FAULT_3
+#define _FAULT_TRIGGER_STAYED_ON                   _FAULT_4
 #define _FAULT_PANEL_OPEN                         _FAULT_5
 #define _FAULT_KEYLOCK_OPEN                       _FAULT_6
+
 
 #define _STATUS_CUSTOMER_HV_DISABLE                _WARNING_0
 #define _STATUS_CUSTOMER_X_RAY_DISABLE             _WARNING_1
