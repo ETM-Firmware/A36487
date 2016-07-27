@@ -134,8 +134,8 @@ typedef struct{
 
 #define log_data_rep_rate_deci_hertz        slave_board_data.log_data[3]
 
-#define trigger_width             (*((unsigned char*)&slave_board_data.log_data[7] + 0))
-#define trigger_width_filtered    (*((unsigned char*)&slave_board_data.log_data[7] + 1))
+//#define trigger_width             (*((unsigned char*)&slave_board_data.log_data[7] + 0))
+//#define trigger_width_filtered    (*((unsigned char*)&slave_board_data.log_data[7] + 1))
 
 #define data_grid_start           (*(((unsigned char*)&slave_board_data.log_data[11]) + 0))
 #define data_grid_stop            (*(((unsigned char*)&slave_board_data.log_data[11]) + 1))

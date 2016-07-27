@@ -1,5 +1,12 @@
 #include "A36487.h"
 
+
+
+unsigned char uart2_input_buffer[16];
+unsigned char dose_message[6];
+unsigned int  uart2_next_byte;
+unsigned int  uart2_message_ready;
+
 // Global Variables
 PSB_DATA psb_data;
 
@@ -8,9 +15,9 @@ void InitializeA36487(void);
 void DoA36487(void);
 void DoStartupLEDs(void);
 void DoPostTriggerProcess(void);
-void ReadTrigPulseWidth(void);
+//void ReadTrigPulseWidth(void);
 void ReadAndSetEnergy(void);
-void ProgramShiftRegisters(void);
+//void ProgramShiftRegisters(void);
 unsigned int GetInterpolationValue(unsigned int low_point, unsigned int high_point, unsigned low_value, unsigned high_value, unsigned point);
 unsigned char ReadDosePersonality(void);
 void ResetCounter(void);
@@ -484,23 +491,36 @@ void DoStartupLEDs(void) {
     }
 }
 
+void RecieveUart2Message(void) {
+  unsigned char grid_start;
+  unsigned char grid_stop;
+  next_pulse_level_bit = ReadMessageNextPulseLevel();
+  ProgramShiftRegistersGrid(ReadMessageDoseCommmand());
+  uart2_message_ready = 0;
+}
+
 
 void DoPostTriggerProcess(void) {
   
+  uart2_next_byte = 0;
+  uart2_message_ready = 0;
+
   // This is used to detect if the trigger is high (which would cause constant pulses to the system)
   if (PIN_TRIG_INPUT != ILL_TRIG_ON) {
-    ReadTrigPulseWidth();
+    //ReadTrigPulseWidth();
     ReadAndSetEnergy();
   } else {  // if pulse trig stays on, set to minimum dose and flag fault
     _STATUS_TRIGGER_STAYED_ON = 1;
     _FAULT_TRIGGER_STAYED_ON = 1;
     PIN_CPU_XRAY_ENABLE_OUT = !OLL_CPU_XRAY_ENABLE;
-    trigger_width_filtered = 0;
+    //trigger_width_filtered = 0;
   }
+  this_pulse_level_bit = next_pulse_level_bit;
   
-  ProgramShiftRegisters();
+  
+  ProgramShiftRegistersDelays();
   psb_data.period_filtered = RCFilterNTau(psb_data.period_filtered, psb_data.last_period, RC_FILTER_4_TAU);
-    
+  
   if (ETMCanSlaveGetSyncMsgHighSpeedLogging()) {
     // Log Pulse by Pulse data
     ETMCanSlaveLogPulseData(ETM_CAN_DATA_LOG_REGISTER_PULSE_SYNC_FAST_LOG_0,
@@ -514,7 +534,7 @@ void DoPostTriggerProcess(void) {
   ETMCanSlavePulseSyncSendNextPulseLevel(psb_data.energy, psb_data.pulses_on, log_data_rep_rate_deci_hertz);
 }
 
-
+/*
 void ReadTrigPulseWidth(void) {
   unsigned int data;
   unsigned char i;
@@ -554,15 +574,15 @@ void ReadTrigPulseWidth(void) {
 
   
   // DPARKER, what is the point of this???
-  /*
+  
   if (trigger_width_filtered < 245) {   //signify to pfn control board what mode to expect
     PIN_MODE_OUT = OLL_MODE_PORTAL;   //so it can use a different target
   } else {                                  //current setpoint for low energy
     PIN_MODE_OUT = OLL_MODE_GANTRY;
   }
-  */
+  
 }
-
+*/
 
 
 
@@ -661,6 +681,79 @@ void ResetCounter(void) {
 }
 
 
+ConfigureSPI(ETM_SPI_PORT_2, ETM_DEFAULT_SPI_CON_VALUE, ETM_DEFAULT_SPI_CON2_VALUE, ETM_DEFAULT_SPI_STAT_VALUE, SPI_5_M_BIT, FCY_CLK);
+
+
+#define HIGH_ENERGY_PULSE  1
+#define LOW_ENERGY_PULSE   0
+
+void ProgramShiftRegistersGrid(unsigned char range_select) {
+  unsigned char grid_start;
+  unsigned char grid_stop;
+  unsigned int data;
+
+
+  if (GetThisPulseLevel() == HIGH_ENERGY_PULSE) {
+    grid_stop  = InterpolateValue(GRID_STOP_HIGH_ENERGY);
+    grod_start = InterpolateValue(GRID_START_HIGH_ENERGY);
+  } else {
+    grid_stop  = InterpolateValue(GRID_STOP_LOW_ENERGY);
+    grod_start = InterpolateValue(GRID_START_LOW_ENERGY);
+  }
+
+  // Send out Grid start and stop delays
+  data   = grid_stop;
+  data <<= 8;
+  data  += grid_start;
+  SendAndReceiveSPI(data, ETM_SPI_PORT_2);
+  PIN_LD_DELAY_GUN_OUT = 0;
+  Nop();
+  PIN_LD_DELAY_GUN_OUT = 1;
+  Nop();
+}
+
+void ProgramShiftRegistersDelays(void) {
+  unsigned int data;
+  unsigned char hv_trigger_delay;
+  unsigned char pfn_trigger_delay;
+  unsigned char magnetron_sample_delay;
+  unsigned char afc_sample_delay;
+  
+  if (GetThisPulseLevel() == HIGH_ENERGY_PULSE) {
+    hv_trigger_delay = dose_sample_delay_high;
+    pfn_trigger_delay = pfn_delay_high;
+    magnetron_sample_delay = magnetron_current_sample_delay_high;
+    afc_sample_delay = afc_delay_high;
+  } else {
+    hv_trigger_delay = dose_sample_delay_low;
+    pfn_trigger_delay = pfn_delay_low;
+    magnetron_sample_delay = magnetron_current_sample_delay_low;
+    afc_sample_delay = afc_delay_low;
+  }
+  
+
+  // Send out the PFN & HV trigger delays
+  data   = hv_trigger_delay;
+  data <<= 8;
+  data  += pfn_trigger_delay;
+  SendAndReceiveSPI(data, ETM_SPI_PORT_2);
+  PIN_LD_DELAY_PFN_OUT = 0;
+  Nop();
+  PIN_LD_DELAY_PFN_OUT = 1;
+  Nop();
+
+  // Send out the Magnetron and AFC Sample delays
+  data   = magnetron_sample_delay;
+  data <<= 8;
+  data  += afc_sample_delay;
+  SendAndReceiveSPI(data, ETM_SPI_PORT_2);
+  PIN_LD_DELAY_PFN_OUT = 0;
+  Nop();
+  PIN_LD_DELAY_PFN_OUT = 1;
+  Nop();
+}
+
+/*
 void ProgramShiftRegisters(void) {
   unsigned int p;
   unsigned int q;
@@ -748,19 +841,16 @@ void ProgramShiftRegisters(void) {
     Nop();
   }
 }
-
+*/
 
 unsigned char InterpolateValue(unsigned char select, unsigned char index) {
-  unsigned int val_0 = 0;
-  unsigned int val_1 = 0;
-  unsigned int val_2 = 0;
-  unsigned int val_3 = 0;
-  unsigned int result = 0;
+  unsigned int val_0;
+  unsigned int val_1;
+  unsigned int val_2;
+  unsigned int val_3;
+  unsigned int result;
+  unsigned char carry;
   
-  if (index == 26) {
-    index = 25;
-  }
-
   switch (select) 
     {
     case GRID_START_HIGH_ENERGY:
@@ -792,19 +882,31 @@ unsigned char InterpolateValue(unsigned char select, unsigned char index) {
       break;
     }
   
-  if (index < 9) {
-    result   = val_0 * (9 - index);
-    result  += val_1 * (index - 1);
-    result >>= 3;
-  } else if (index < 17) {
-    result   = val_1 * (17 - index);
-    result  += val_2 * (index - 9);
-    result >>= 3;
-  } else if (index <= 25) {
-    result   = val_2 * (25 - index);
-    result  += val_3 * (index - 17);
-    result >>= 3;
+  val_0 <<= 1;
+  val_1 <<= 1;
+  val_2 <<= 1;
+  val_3 <<= 1;
+  
+  
+  
+  if (index < 85) {
+    result   = val_0 * (85 - index);
+    result  += val_1 * (index);
+    result  /= 85;
+  } else if (index < 170) {
+    result   = val_1 * (170 - index);
+    result  += val_2 * (index - 85);
+    result  /= 85;
+  } else {
+    result   = val_2 * (255 - index);
+    result  += val_3 * (index - 170);
+    result  /= 85;
   }
+  
+  carry = result & 0x0001;
+  result >>= 1;
+  result  += carry;
+  
   return result;
 }
 
@@ -1059,4 +1161,28 @@ void ETMCanSlaveExecuteCMDBoardSpecific(ETMCanMessage* message_ptr) {
       ETMCanSlaveIncrementInvalidIndex();
       break;
     }
+}
+
+
+
+
+void __attribute__((interrupt, no_auto_psv)) _U2RXInterrupt(void) {
+  _U2RXIF = 0;
+  while (U2STAbits.URXDA) {
+    uart2_input_buffer[uart2_next_byte] = U2RXREG;
+    uart2_next_byte++;
+    uart2_next_byte &= 0x000F;
+  }
+  
+  if (uart2_next_byte >= 6) {
+    // copy data and process the command;
+    dose_message[0] = uart2_input_buffer[0];
+    dose_message[1] = uart2_input_buffer[1];
+    dose_message[2] = uart2_input_buffer[2];
+    dose_message[3] = uart2_input_buffer[3];
+    dose_message[4] = uart2_input_buffer[4];
+    dose_message[5] = uart2_input_buffer[5];
+    uart2_next_byte = 0;
+    uart2_message_ready = 1;
+  }
 }
