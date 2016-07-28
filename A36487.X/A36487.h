@@ -27,35 +27,26 @@
 
 //These values are calculated or measured by the pulse sync board
 typedef struct{
-    unsigned int led_flash_counter;
-    unsigned int counter_config_received;
-    unsigned int state_machine;
-    unsigned int led_state;        
-    unsigned int last_period;
-    unsigned int period_filtered;
-    unsigned int pulses_on;
-    unsigned int trigger_complete;
-    unsigned char dose_sample_delay;         //calculated RF PCB Delay (target current)
-    unsigned char pfn_delay;
-    unsigned char afc_delay;
-    unsigned char magnetron_current_sample_delay;
+  unsigned int led_flash_counter;        // This is used to time the on board LED flashing
+  unsigned int counter_config_received;  // This is used to determine what configuration data has been received
+  unsigned int control_state;            // This is the state of the state machine
+  unsigned int last_period;              // The was the last PFR period
+  unsigned int period_filtered;          // This is an filtered version of the PRF
+  unsigned int pulses_on;                // This counts the number of pusles, sent out to each board so that data between pulses can be synced
+  unsigned int trigger_complete;         // This bit is set when the trigger ISR occurs
+  //unsigned char dose_sample_delay;       // calculated RF PCB Delay (target current)
+  //unsigned char pfn_delay;               
+  //unsigned char afc_delay;
+  //unsigned char magnetron_current_sample_delay;
+  unsigned int led_state;                // DPARKER - HOW IS THIS USED???? As far as I can tell it isn't        
+  unsigned char personality;             // DPARKER - This is not working at the moment //0=UL, 1=L, 2=M, 3=H
+  unsigned int  next_pulse_level_energy_command;  // This stores the next pulse level command, it is loaded into this_pulse_level_energy_command after a trigger
+  unsigned int  this_pulse_level_energy_command;
+  
+  TYPE_DIGITAL_INPUT pfn_fan_fault;
+  
+} TYPE_GLOBAL_DATA_A36487;
 
-    TYPE_DIGITAL_INPUT pfn_fan_fault;
-    
-    
-    unsigned char personality;      //0=UL, 1=L, 2=M, 3=H
-    unsigned char last_trigger_filtered;
-    unsigned char energy;
-
-    unsigned char trigger_index;
-
-
-} PSB_DATA;
-
-//Definitions
-#define DOSE_LEVELS     11   //sets the amount of bits to converge into single dose level
-#define HI              1
-#define LOW             0
 
 // STATES
 #define STATE_INIT              10
@@ -72,8 +63,8 @@ typedef struct{
 #define _FAULT_RF_STATUS                           _FAULT_2
 #define _FAULT_PFN_STATUS                          _FAULT_3
 #define _FAULT_TRIGGER_STAYED_ON                   _FAULT_4
-#define _FAULT_PANEL_OPEN                         _FAULT_5
-#define _FAULT_KEYLOCK_OPEN                       _FAULT_6
+#define _FAULT_PANEL_OPEN                          _FAULT_5
+#define _FAULT_KEYLOCK_OPEN                        _FAULT_6
 
 
 #define _STATUS_CUSTOMER_HV_DISABLE                _WARNING_0
@@ -81,8 +72,8 @@ typedef struct{
 #define _STATUS_LOW_MODE_OVERRIDE                  _WARNING_2
 #define _STATUS_HIGH_MODE_OVERRIDE                 _WARNING_3
 #define _STATUS_PERSONALITY_READ_COMPLETE          _WARNING_4
-//#define _STATUS_PANEL_OPEN                         _WARNING_5
-//#define _STATUS_KEYLOCK_OPEN                       _WARNING_6
+//#define _STATUS_PANEL_OPEN                       _WARNING_5
+//#define _STATUS_KEYLOCK_OPEN                     _WARNING_6
 #define _STATUS_TRIGGER_STAYED_ON                  _WARNING_7
 
 
@@ -93,12 +84,12 @@ typedef struct{
 
 
 
-#define LED_WARMUP_STATUS                         (psb_data.led_state & 0x0001)
-#define LED_STANDBY_STATUS                        (psb_data.led_state & 0x0002)
-#define LED_READY_STATUS                          (psb_data.led_state & 0x0004)
-#define LED_SUM_FAULT_STATUS                      (psb_data.led_state & 0x0008)
+//#define LED_WARMUP_STATUS                         (psb_data.led_state & 0x0001)
+//#define LED_STANDBY_STATUS                        (psb_data.led_state & 0x0002)
+//#define LED_READY_STATUS                          (psb_data.led_state & 0x0004)
+//#define LED_SUM_FAULT_STATUS                      (psb_data.led_state & 0x0008)
 
-#define LED_STARTUP_FLASH_TIME                    300 // 3 Seconds
+#define LED_STARTUP_FLASH_TIME                     300 // 3 Seconds
 
 
 
@@ -117,7 +108,6 @@ typedef struct{
 #define magnetron_current_sample_delay_high    (*(unsigned char*)&slave_board_data.log_data[6])
 #define afc_delay_high            (*((unsigned char*)&slave_board_data.log_data[6] + 1))
 
-
 #define grid_start_low3           (*(unsigned char*)&slave_board_data.log_data[8])
 #define grid_start_low2           (*((unsigned char*)&slave_board_data.log_data[8] + 1))
 #define grid_start_low1           (*(unsigned char*)&slave_board_data.log_data[9])
@@ -134,31 +124,30 @@ typedef struct{
 
 #define log_data_rep_rate_deci_hertz        slave_board_data.log_data[3]
 
-//#define trigger_width             (*((unsigned char*)&slave_board_data.log_data[7] + 0))
-//#define trigger_width_filtered    (*((unsigned char*)&slave_board_data.log_data[7] + 1))
+#define trigger_width             (*((unsigned char*)&slave_board_data.log_data[7] + 0))
+#define trigger_width_filtered    (*((unsigned char*)&slave_board_data.log_data[7] + 1))
 
 #define data_grid_start           (*(((unsigned char*)&slave_board_data.log_data[11]) + 0))
 #define data_grid_stop            (*(((unsigned char*)&slave_board_data.log_data[11]) + 1))
 
-/*
 
-// BufferByte Setup
-#define COMMAND_BUFFER_EMPTY  0x00
-#define COMMAND_BUFFER_FULL   0x02
-*/
 // Various definitions
 #define TRIS_OUTPUT_MODE 0
 #define TRIS_INPUT_MODE  1
 
 // ***Digital Pin Definitions***
 
+// DPARKER - CLEAN UP PIN DEFFENITIONS and INITIALIZAITONS
+
 // Personality module
 #define PIN_ID_SHIFT_OUT                    _LATC2
 #define TRIS_PIN_ID_SHIFT_OUT               _TRISC2
 #define OLL_ID_SHIFT                        1
+
 #define PIN_ID_CLK_OUT                      _LATC3
 #define TRIS_PIN_ID_CLK_OUT                 _TRISC3
 #define OLL_ID_CLK                          1
+
 #define PIN_ID_DATA_IN                      _RC4
 #define TRIS_PIN_ID_DATA_IN                 _TRISC4
 #define ILL_ID_DATA                         1
@@ -167,6 +156,7 @@ typedef struct{
 #define TRIS_PIN_PACKAGE_ID1_IN             _TRISF3
 #define PIN_PACKAGE_ID1_IN                  _RF3
 #define ILL_PACKAGE_ID1_OK                  0
+
 #define TRIS_PIN_READY_FOR_ANALOG_OUT       _TRISD15	//READY / !ADJUSTING
 #define PIN_READY_FOR_ANALOG_OUT            _LATD15
 #define OLL_READY_FOR_ANALOG                1
@@ -181,12 +171,15 @@ typedef struct{
 #define PIN_XRAY_CMD_MISMATCH_IN            _RD14
 #define TRIS_PIN_XRAY_CMD_MISMATCH_IN       _TRISD14
 #define ILL_XRAY_CMD_MISMATCH               1
+
 #define PIN_LOW_MODE_IN                     _RB3
 #define TRIS_PIN_LOW_MODE_IN                _TRISB3
-#define ILL_LOW_MODE                        1
+
 #define PIN_HIGH_MODE_IN                    _RB2
 #define TRIS_PIN_HIGH_MODE_IN               _TRISB2
-#define ILL_HIGH_MODE                       1
+
+#define ILL_MODE_BIT_SELECTED               0 
+
 
 #define TRIS_PIN_KEY_LOCK_IN                _TRISF7	 
 #define PIN_KEY_LOCK_IN                     _RF7
@@ -231,14 +224,9 @@ typedef struct{
 #define PIN_LED_READY                       _LATG13
 #define TRIS_PIN_LED_READY                  _TRISG13
 #define OLL_LED_ON                          0
-//#define PIN_LED_STANDBY                     _LATG12  // This is used by CAN module to indicate board alive
-//#define TRIS_PIN_LED_STANDBY                _TRISG12
-//#define PIN_LED_WARMUP                      _LATG14  //This is used for CAN status
-//#define TRIS_PIN_LED_WARMUP                 _TRISG14
 #define PIN_LED_XRAY_ON                     _LATG15
 #define TRIS_PIN_LED_XRAY_ON                _TRISG15
-//#define PIN_LED_SUMFLT                      _LATC1  // This is used by Can module to indicate not ready
-//#define TRIS_PIN_LED_SUMFLT                 _TRISC1
+
 
 //Energy Pins
 #define TRIS_PIN_ENERGY_CPU_OUT             _TRISC14
@@ -317,10 +305,10 @@ typedef struct{
 
 
 // These defines are what is actually read from the shift register
-#define HIGH_DOSE       0x77
-#define MEDIUM_DOSE     0xCC
-#define LOW_DOSE        0xAA
-#define ULTRA_LOW_DOSE  0x99
+#define HIGH_DOSE               0x77
+#define MEDIUM_DOSE             0xCC
+#define LOW_DOSE                0xAA
+#define ULTRA_LOW_DOSE          0x99
 
 //Pin requirements
 #define PIN_ID_SHIFT_OUT	_LATC2
