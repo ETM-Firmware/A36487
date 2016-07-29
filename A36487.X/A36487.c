@@ -22,32 +22,8 @@ void DoPostTriggerProcess(void);
 void ProgramShiftRegistersDelays(void);
 void ProgramShiftRegistersGrid(unsigned char dose_command);
 unsigned int GetThisPulseLevel(void);
-unsigned char InterpolateValue(unsigned char select, unsigned char index);
+unsigned char InterpolateValue(unsigned int val_0, unsigned int val_1, unsigned int val_2, unsigned int val_3, unsigned char index);
 void ResetCounter(void);
-
-
-
-#define GRID_START_HIGH_ENERGY      0
-#define GRID_STOP_HIGH_ENERGY       1
-#define GRID_START_LOW_ENERGY       2
-#define GRID_STOP_LOW_ENERGY        3
-
-
-/*
-  Return:
-  0x00 = No dose personailty installed
-  0x02 = Ultra Low Dose Personality Installed
-  0x04 = Low Dose Personailty Installed
-  0x08 = Medium Dose Personality Installed
-  0x10 = High Dose Personailty Installed
-  0xFF = Problem reading personailty module
-*/
-
-
-
-
-
-
 
 
 //Processor Setup
@@ -230,18 +206,18 @@ void InitializeA36487(void) {
   _INT3EP = 1; 	        // Interrupt on falling edge
   _INT3IP = 7;		// Set interrupt to highest priority
   
+
+  // Setup Timer 1 to measure interpulse period.
+  T1CON = T1CON_VALUE
+  PR1 = PR1_VALUE_400mS
   
   // 10mS Period
-  T2CON = (T2_ON & T2_IDLE_CON & T2_GATE_OFF & T2_PS_1_8 & T2_SOURCE_INT & T2_32BIT_MODE_OFF);
-  PR2 = 12500;
+  T2CON = T2CON_VALUE;
+  PR2 = PR2_VALUE_10mS;
   TMR2 = 0;
   _T2IF = 0;
   
 
-  // Setup Timer 1 to measure interpulse period.
-  T1CON = (T1_ON & T1_IDLE_CON & T1_GATE_OFF & T1_PS_1_64 & T1_SOURCE_INT);
-  PR1 = 62500;  // 400mS
-  
 
   global_data_A36487.personality = 0;
   global_data_A36487.personality = ReadDosePersonality(); // DPARKER UPDATE THIS FUNCTION IT DOESN'T WORK
@@ -287,6 +263,20 @@ void InitializeA36487(void) {
 
   ConfigureSPI(ETM_SPI_PORT_2, ETM_DEFAULT_SPI_CON_VALUE, ETM_DEFAULT_SPI_CON2_VALUE, ETM_DEFAULT_SPI_STAT_VALUE, SPI_CLK_5_MBIT, FCY);
   // DPARKER CONSIDER WRITING MODULE FOR SHIFT REGISTER DELAY LINE
+
+  // Configure UART2 for communicating with Customer
+  uart2_next_byte = 0;  
+  _U2RXIF = 0;
+  _U2RXIP = 6;
+  _U2RXIE = 1;
+
+
+  U1BRG = A36487_U2_BRG_VALUE;
+  U1STA = A36487_U2_STA_VALUE;
+  U1MODE = A36487_U2_MODE_VALUE;
+
+  ADCON1 = ADCON1_SETTING;  
+  ADPCFG = ADPCFG_SETTING;
 }
 
 
@@ -396,8 +386,6 @@ void InitPins() {
   COMM_RX_TRIS = TRIS_INPUT_MODE;
   COMM_TX_TRIS = TRIS_OUTPUT_MODE;
   
-  ADPCFG = 0b0000000011111111;
-  ADCON1 = 0x0000;
 }
 
 unsigned char ReadDosePersonality() {
@@ -709,11 +697,11 @@ void ProgramShiftRegistersGrid(unsigned char dose_command) {
   unsigned int data;
 
   if (GetThisPulseLevel() == DOSE_COMMAND_HIGH_ENERGY) {
-    data_grid_stop  = InterpolateValue(GRID_STOP_HIGH_ENERGY, dose_command);
-    data_grid_start = InterpolateValue(GRID_START_HIGH_ENERGY, dose_command);
+    data_grid_stop  = InterpolateValue(grid_stop_high0, grid_stop_high1, grid_stop_high2, grid_stop_high3, dose_command);
+    data_grid_start = InterpolateValue(grid_start_high0, grid_start_high1, grid_start_high2, grid_start_high3, dose_command);
   } else {
-    data_grid_stop  = InterpolateValue(GRID_STOP_LOW_ENERGY, dose_command);
-    data_grid_start = InterpolateValue(GRID_START_LOW_ENERGY, dose_command);
+    data_grid_stop  = InterpolateValue(grid_stop_low0, grid_stop_low1, grid_stop_low2, grid_stop_low3, dose_command);
+    data_grid_start = InterpolateValue(grid_start_low0, grid_start_low1, grid_start_low2, grid_start_low3, dose_command);
   }
 
   // Send out Grid start and stop delays
@@ -758,51 +746,14 @@ unsigned int GetThisPulseLevel(void) {
 }
 
 
-unsigned char InterpolateValue(unsigned char select, unsigned char index) {
-  unsigned int val_0;
-  unsigned int val_1;
-  unsigned int val_2;
-  unsigned int val_3;
+unsigned char InterpolateValue(unsigned int val_0, unsigned int val_1, unsigned int val_2, unsigned int val_3, unsigned char index) {
   unsigned int result;
   unsigned char carry;
-  
-  switch (select) 
-    {
-    case GRID_START_HIGH_ENERGY:
-      val_0 = grid_start_high0;
-      val_1 = grid_start_high1;
-      val_2 = grid_start_high2;
-      val_3 = grid_start_high3;
-      break;
-      
-    case GRID_STOP_HIGH_ENERGY:
-      val_0 = grid_stop_high0;
-      val_1 = grid_stop_high1;
-      val_2 = grid_stop_high2;
-      val_3 = grid_stop_high3;
-      break;
-      
-    case GRID_START_LOW_ENERGY:
-      val_0 = grid_start_low0;
-      val_1 = grid_start_low1;
-      val_2 = grid_start_low2;
-      val_3 = grid_start_low3;
-      break;
-      
-    case GRID_STOP_LOW_ENERGY:
-      val_0 = grid_stop_low0;
-      val_1 = grid_stop_low1;
-      val_2 = grid_stop_low2;
-      val_3 = grid_stop_low3;
-      break;
-    }
   
   val_0 <<= 1;
   val_1 <<= 1;
   val_2 <<= 1;
   val_3 <<= 1;
-  
-  
   
   if (index < 85) {
     result   = val_0 * (85 - index);

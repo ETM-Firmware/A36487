@@ -1,24 +1,40 @@
 // PULSE SYNCHRONIZATION BOARD FIRMWARE
-//
-// DESCRIPTION:
-//      1. All the action happens here
-//      2. Calling the initialize routine
-//      3. Sampling the trigger width
-//      4. Interpreting the customer energy command
-//      5. Setting the appropriate energy levels
-//      6. Programing the delay lines for the trigger delays/widths
-//      7. Reading the personality module
-//
-
 #ifndef __A36487_h
 #define __A36487_h
 
 #include <XC.h>
 #include <libpic30.h>
 #include <timer.h>
+#include <uart.h>
+
 #include "ETM.h"
 #include "P1395_CAN_SLAVE.h"
 #include "FIRMWARE_VERSION.h"
+
+
+/*
+  Hardware Module Resource Usage
+
+  CAN1   - Used/Configured by ETM CAN 
+  Timer4 - Used/Configured by ETM CAN - Used to Time sending of messages (status update / logging data and such) 
+  Timer5 - Used/Configured by ETM CAN - Used for detecting error on can bus
+  PIN_G14 - Used/Configured by ETM CAN 
+  PIN_G12 - Used/Configured by ETM CAN 
+  PIN_C1  - Used/Configured by ETM CAN 
+
+  SPI2   - Used/Configured by Serial Shift Delay Line Software
+
+  Timer1 - Used to measure PRF and 
+  Timer2 - Used for 10ms Timing
+  Timer3 - Not used
+
+  INT3 - Used for Pulse Trigger ISR
+
+  UART2 - Use for dose command from customer
+
+  ADC Module - Not Used
+
+*/
 
 
 //Oscillator Setup
@@ -34,10 +50,6 @@ typedef struct{
   unsigned int period_filtered;          // This is an filtered version of the PRF
   unsigned int pulses_on;                // This counts the number of pusles, sent out to each board so that data between pulses can be synced
   unsigned int trigger_complete;         // This bit is set when the trigger ISR occurs
-  //unsigned char dose_sample_delay;       // calculated RF PCB Delay (target current)
-  //unsigned char pfn_delay;               
-  //unsigned char afc_delay;
-  //unsigned char magnetron_current_sample_delay;
   unsigned int led_state;                // DPARKER - HOW IS THIS USED???? As far as I can tell it isn't        
   unsigned char personality;             // DPARKER - This is not working at the moment //0=UL, 1=L, 2=M, 3=H
   unsigned int  next_pulse_level_energy_command;  // This stores the next pulse level command, it is loaded into this_pulse_level_energy_command after a trigger
@@ -82,15 +94,7 @@ typedef struct{
 #define _PERSONALITY_BIT_2                         _NOT_LOGGED_2
 #define _PERSONALITY_BIT_3                         _NOT_LOGGED_3
 
-
-
-//#define LED_WARMUP_STATUS                         (psb_data.led_state & 0x0001)
-//#define LED_STANDBY_STATUS                        (psb_data.led_state & 0x0002)
-//#define LED_READY_STATUS                          (psb_data.led_state & 0x0004)
-//#define LED_SUM_FAULT_STATUS                      (psb_data.led_state & 0x0008)
-
 #define LED_STARTUP_FLASH_TIME                     300 // 3 Seconds
-
 
 
 // #defines that set up the log data variables
@@ -134,6 +138,69 @@ typedef struct{
 // Various definitions
 #define TRIS_OUTPUT_MODE 0
 #define TRIS_INPUT_MODE  1
+
+
+// DIGITAL INPUT PINS
+#define PIN_CUSTOMER_BEAM_ENABLE_IN         _RG2
+#define ILL_CUSTOMER_BEAM_ENABLE            1
+
+#define PIN_CUSTOMER_XRAY_ON_IN             _RG3
+#define ILL_CUSTOMER_XRAY_ON                1
+
+
+
+// DIGITAL OUTPUT PINS
+#define PIN_CPU_HV_ENABLE_OUT               _RD8
+#define OLL_CPU_HV_ENABLE                   1
+
+#define PIN_CPU_XRAY_ENABLE_OUT             _RC13
+#define OLL_CPU_XRAY_ENABLE                 1
+
+#define PIN_CPU_WARNING_LAMP_OUT            _RD9
+#define OLL_CPU_WARNING_LAMP                1
+
+
+
+
+
+
+/*
+  ----------  ADC CONFIGURATION --------------
+  ADC is not used
+  Disable the ADC and set all pins to digital Inputs
+*/
+  
+#define ADCON1_SETTING  (ADC_MODULE_OFF & ADC_IDLE_STOP & ADC_FORMAT_INTG & ADC_CLK_AUTO & ADC_AUTO_SAMPLING_ON)
+#define ADPCFG_SETTING  0xFFFF // All pins are digital Inputs
+
+
+
+
+
+/*
+  ------------ UART 2 Configuration -----------------------
+  Use UART1, 625KBaud, Disable TX
+*/
+#define A36487_U2_MODE_VALUE        (UART_EN & UART_IDLE_STOP & UART_DIS_WAKE & UART_DIS_LOOPBACK & UART_DIS_ABAUD & UART_NO_PAR_8BIT & UART_1STOPBIT)
+#define A36487_U2_STA_VALUE         (UART_INT_TX & UART_TX_PIN_NORMAL & UART_TX_DISABLE & UART_INT_RX_CHAR & UART_ADR_DETECT_DIS)
+#define A36487_U2_BRG_VALUE         0 // 625KBaud at 10 MHz CLK
+  
+
+/* 
+   ---------- TMR Configuration -----------
+   Timer1 - Used to measure the PRF
+   With 10Mhz Clock, x64 multiplier will yield max period of 419mS, 6.4 uS per Tick
+
+   Timer2 - Used to measure 10ms
+*/
+    
+#define T1CON_VALUE                    (T1_ON & T1_IDLE_CON & T1_GATE_OFF & T1_PS_1_64 & T1_SOURCE_INT)
+#define PR1_VALUE_400mS                62500
+
+#define T2CON_VALUE                    (T2_ON & T2_IDLE_CON & T2_GATE_OFF & T2_PS_1_8 & T2_SOURCE_INT & T2_32BIT_MODE_OFF)
+#define PR2_VALUE_10mS                 12500                        
+
+
 
 // ***Digital Pin Definitions***
 
@@ -191,41 +258,37 @@ typedef struct{
 
 // CONTROL to board A35487
 #define TRIS_PIN_CUSTOMER_BEAM_ENABLE_IN    _TRISG2
-#define PIN_CUSTOMER_BEAM_ENABLE_IN         _RG2
-#define ILL_CUSTOMER_BEAM_ENABLE            1
 #define TRIS_PIN_CUSTOMER_XRAY_ON_IN        _TRISG3	
-#define PIN_CUSTOMER_XRAY_ON_IN             _RG3
-#define ILL_CUSTOMER_XRAY_ON                1
 #define TRIS_PIN_CPU_XRAY_ENABLE_OUT        _TRISC13
 #define TRIS_PIN_CPU_HV_ENABLE_OUT          _TRISD8
-#define PIN_CPU_HV_ENABLE_OUT               _RD8
-#define OLL_CPU_HV_ENABLE                   1
-#define PIN_CPU_XRAY_ENABLE_OUT             _RC13
-#define OLL_CPU_XRAY_ENABLE                 1
 #define TRIS_PIN_CPU_WARNING_LAMP_OUT       _TRISD9
-#define PIN_CPU_WARNING_LAMP_OUT            _RD9
-#define OLL_CPU_WARNING_LAMP                1
+
 
 // Customer Status pins
 #define PIN_CPU_STANDBY_OUT                 _RB5
-#define TRIS_PIN_CPU_STANDBY_OUT            _TRISB5
 #define OLL_CPU_STANDBY                     0
+//#define TRIS_PIN_CPU_STANDBY_OUT            _TRISB5
+
 #define PIN_CPU_READY_OUT                   _RB4
-#define TRIS_PIN_CPU_READY_OUT              _TRISB4
 #define OLL_CPU_READY                       0
-#define TRIS_PIN_CPU_SUMFLT_OUT             _TRISD0
+//#define TRIS_PIN_CPU_READY_OUT              _TRISB4
+
+  //#define TRIS_PIN_CPU_SUMFLT_OUT             _TRISD0
 #define PIN_CPU_SUMFLT_OUT                  _RD0
 #define OLL_CPU_SUMFLT                      0
-#define TRIS_PIN_CPU_WARMUP_OUT             _TRISD10
+
+  //#define TRIS_PIN_CPU_WARMUP_OUT             _TRISD10
 #define PIN_CPU_WARMUP_OUT                  _RD10
 #define OLL_CPU_WARMUP                      0
 
-//     LEDS
+  //#define TRIS_PIN_LED_READY                  _TRISG13
+  //#define TRIS_PIN_LED_XRAY_ON                _TRISG15
 #define PIN_LED_READY                       _LATG13
-#define TRIS_PIN_LED_READY                  _TRISG13
-#define OLL_LED_ON                          0
 #define PIN_LED_XRAY_ON                     _LATG15
-#define TRIS_PIN_LED_XRAY_ON                _TRISG15
+#define OLL_LED_ON                          0
+
+
+
 
 
 //Energy Pins
