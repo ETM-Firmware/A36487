@@ -6,7 +6,7 @@
 #include <libpic30.h>
 #include <timer.h>
 #include <uart.h>
-
+#include <adc12.h>
 #include "ETM.h"
 #include "P1395_CAN_SLAVE.h"
 #include "FIRMWARE_VERSION.h"
@@ -135,10 +135,6 @@ typedef struct{
 #define data_grid_stop            (*(((unsigned char*)&slave_board_data.log_data[11]) + 1))
 
 
-// Various definitions
-#define TRIS_OUTPUT_MODE 0
-#define TRIS_INPUT_MODE  1
-
 
 // DIGITAL INPUT PINS
 #define PIN_CUSTOMER_BEAM_ENABLE_IN         _RG2
@@ -206,164 +202,121 @@ typedef struct{
 
 // DPARKER - CLEAN UP PIN DEFFENITIONS and INITIALIZAITONS
 
-// Personality module
-#define PIN_ID_SHIFT_OUT                    _LATC2
-#define TRIS_PIN_ID_SHIFT_OUT               _TRISC2
-#define OLL_ID_SHIFT                        1
 
-#define PIN_ID_CLK_OUT                      _LATC3
-#define TRIS_PIN_ID_CLK_OUT                 _TRISC3
-#define OLL_ID_CLK                          1
-
-#define PIN_ID_DATA_IN                      _RC4
-#define TRIS_PIN_ID_DATA_IN                 _TRISC4
-#define ILL_ID_DATA                         1
-
-// Spare (not used in current application)
-#define TRIS_PIN_PACKAGE_ID1_IN             _TRISF3
-#define PIN_PACKAGE_ID1_IN                  _RF3
-#define ILL_PACKAGE_ID1_OK                  0
-
-#define TRIS_PIN_READY_FOR_ANALOG_OUT       _TRISD15	//READY / !ADJUSTING
-#define PIN_READY_FOR_ANALOG_OUT            _LATD15
-#define OLL_READY_FOR_ANALOG                1
-
-//Control to PFN control board for Gantry/Portal Selection
-#define TRIS_PIN_MODE_OUT                   _TRISF2
-#define PIN_MODE_OUT                        _RF2
-#define OLL_MODE_GANTRY                     1
-#define OLL_MODE_PORTAL                     0
-
-// STATUS from board A35487
-#define PIN_XRAY_CMD_MISMATCH_IN            _RD14
-#define TRIS_PIN_XRAY_CMD_MISMATCH_IN       _TRISD14
-#define ILL_XRAY_CMD_MISMATCH               1
-
-#define PIN_LOW_MODE_IN                     _RB3
-#define TRIS_PIN_LOW_MODE_IN                _TRISB3
-
-#define PIN_HIGH_MODE_IN                    _RB2
-#define TRIS_PIN_HIGH_MODE_IN               _TRISB2
-
-#define ILL_MODE_BIT_SELECTED               0 
+// Customer Interface
 
 
-#define TRIS_PIN_KEY_LOCK_IN                _TRISF7	 
-#define PIN_KEY_LOCK_IN                     _RF7
-#define ILL_KEY_LOCK_FAULT                  1
+// ----------- Output Pins ------------ 
+/* 
 
-#define TRIS_PIN_PANEL_IN                   _TRISF8	
-#define PIN_PANEL_IN                        _RF8
-#define ILL_PANEL_OPEN                      1
+   B4 - Ready Out
+   B5 - Standby Out
 
-// CONTROL to board A35487
-#define TRIS_PIN_CUSTOMER_BEAM_ENABLE_IN    _TRISG2
-#define TRIS_PIN_CUSTOMER_XRAY_ON_IN        _TRISG3	
-#define TRIS_PIN_CPU_XRAY_ENABLE_OUT        _TRISC13
-#define TRIS_PIN_CPU_HV_ENABLE_OUT          _TRISD8
-#define TRIS_PIN_CPU_WARNING_LAMP_OUT       _TRISD9
+   C2 - Shift Data Out
+   C3 - Shift Clock
+
+   D0 - Sumflt Out
+   D5 - Reset Pulse Width Clock
+   D10 - Warmup Out
+   D11 - Shift Register
+   D12 - Shift Register
+   D13 - Shift Register
+
+   G1  - RS 485 Driver Enable
+   G13 - LED Ready
+   G15 - LED Xray On
 
 
-// Customer Status pins
-#define PIN_CPU_STANDBY_OUT                 _RB5
-#define OLL_CPU_STANDBY                     0
-//#define TRIS_PIN_CPU_STANDBY_OUT            _TRISB5
+*/
+ 
+#define A36487_TRISA_VALUE 0b1111111111111111
+#define A36487_TRISB_VALUE 0b1111111111001111
+#define A36487_TRISC_VALUE 0b1111111111110011
+#define A36487_TRISD_VALUE 0b1100001111011110
+#define A36487_TRISF_VALUE 0b1111111111111111
+#define A36487_TRISG_VALUE 0b0101111111111101
 
-#define PIN_CPU_READY_OUT                   _RB4
-#define OLL_CPU_READY                       0
-//#define TRIS_PIN_CPU_READY_OUT              _TRISB4
 
-  //#define TRIS_PIN_CPU_SUMFLT_OUT             _TRISD0
-#define PIN_CPU_SUMFLT_OUT                  _RD0
-#define OLL_CPU_SUMFLT                      0
 
-  //#define TRIS_PIN_CPU_WARMUP_OUT             _TRISD10
-#define PIN_CPU_WARMUP_OUT                  _RD10
-#define OLL_CPU_WARMUP                      0
+// -----------  LED Outputs ------------------------
+// PIN C1  - Managed by CAN Module
+// PIN G12 - Managed by CAN Module
+// PIN G14 - Managed by CAN Module
 
-  //#define TRIS_PIN_LED_READY                  _TRISG13
-  //#define TRIS_PIN_LED_XRAY_ON                _TRISG15
-#define PIN_LED_READY                       _LATG13
 #define PIN_LED_XRAY_ON                     _LATG15
+#define PIN_LED_READY                       _LATG13
 #define OLL_LED_ON                          0
 
 
 
+// ------------ Personality Module Interface --------------- //
+#define PIN_ID_SHIFT_OUT                    _LATC2
+#define OLL_ID_SHIFT                        1
+
+#define PIN_ID_CLK_OUT                      _LATC3
+#define OLL_ID_CLK                          1
+
+#define PIN_ID_DATA_IN                      _RC4
+#define ILL_ID_DATA                         1
 
 
-//Energy Pins
-#define TRIS_PIN_ENERGY_CPU_OUT             _TRISC14
-#define PIN_ENERGY_CPU_OUT                  _LATC14
-#define OLL_ENERGY_CPU                      0
-#define TRIS_PIN_AFC_TRIGGER_OK_OUT         _TRISD7
-#define PIN_AFC_TRIGGER_OK_OUT              _LATD7
-#define OLL_AFC_TRIGGER_OK                  1
-#define TRIS_PIN_RF_POLARITY_OUT            _TRISD1
-#define PIN_RF_POLARITY_OUT                 _LATD1
-#define OLL_RF_POLARITY                     0
-#define TRIS_PIN_HVPS_POLARITY_OUT          _TRISD2
-#define PIN_HVPS_POLARITY_OUT		    _LATD2
-#define OLL_HVPS_POLARITY                   0
-#define TRIS_PIN_GUN_POLARITY_OUT           _TRISD3
-#define PIN_GUN_POLARITY_OUT		    _LATD3
-#define OLL_GUN_POLARITY                    0
 
-// Pins for the delay line shift registers
-#define TRIS_PIN_SPI_CLK_OUT                _TRISG6
-#define PIN_SPI_CLK_OUT                     _LATG6
-#define TRIS_PIN_SPI_DATA_OUT               _TRISG8
-#define PIN_SPI_DATA_OUT                    _LATG8
-#define TRIS_PIN_SPI_DATA_IN                _TRISG7
-#define PIN_SPI_DATA_IN                     _RG7
-#define TRIS_PIN_LD_DELAY_PFN_OUT           _TRISD12
-#define PIN_LD_DELAY_PFN_OUT		    _LATD12
-#define TRIS_PIN_LD_DELAY_AFC_OUT           _TRISD13
-#define PIN_LD_DELAY_AFC_OUT		    _LATD13
-#define TRIS_PIN_LD_DELAY_GUN_OUT           _TRISD11
-#define PIN_LD_DELAY_GUN_OUT		    _LATD11
+// ----------------- CUSTOMER IO OUTPUTS ---------------  //
+#define PIN_CPU_STANDBY_OUT                 _LATB5
+#define OLL_CPU_STANDBY                     0
 
-// Trigger Pulse width measure
-#define TRIS_PIN_PW_SHIFT_OUT               _TRISD4
-#define PIN_PW_SHIFT_OUT                    _LATD4
-#define OLL_PW_SHIFT                        1
-#define TRIS_PIN_PW_CLR_CNT_OUT             _TRISD5
-#define PIN_PW_CLR_CNT_OUT                  _LATD5
-#define OLL_PW_CLR_CNT                      1
-#define TRIS_PIN_PW_HOLD_LOWRESET_OUT       _TRISD6
-#define PIN_PW_HOLD_LOWRESET_OUT            _LATD6
-#define OLL_PW_HOLD_LOWRESET                1		 /* 1, hold VALID_PULSE, 0, reset the START and VALID_PULSE	*/
-#define TRIS_PIN_TRIG_INPUT                 _TRISF6
-#define PIN_TRIG_INPUT                      _RF6
-#define ILL_TRIG_ON                         1
+#define PIN_CPU_READY_OUT                   _LATB4
+#define OLL_CPU_READY                       0
 
-//Interrupt pins
-#define TRIS_PIN_ENERGY_CMD_IN1             _TRISA12	//INT1
-#define PIN_ENERGY_CMD_IN1		    _RA12
-#define TRIS_PIN_ENERGY_CMD_IN2             _TRISA13	//INT2 tied to INT1
-#define PIN_ENERGY_CMD_IN2		    _RA13
-#define TRIS_PIN_40US_IN2                   _TRISA14	//INT3
-#define PIN_40US_IN2                        _RA14
-#define TRIS_PIN_40US_IN1                   _TRISA15	//INT4 tied to INT3
-#define PIN_40US_IN1                        _RA15
-#define COMM_DRIVER_ENABLE_TRIS             _TRISG1		//Enable the communications driver
-#define COMM_DRIVER_ENABLE_PIN              _RG1
+#define PIN_CPU_WARMUP_OUT                  _LATD10
+#define OLL_CPU_WARMUP                      0
 
-//Bypass these to allow xray on
-#define TRIS_PIN_RF_OK                      _TRISA7
+#define PIN_CPU_SUMFLT_OUT                  _LATD0
+#define OLL_CPU_SUMFLT                      0
+
+
+// ----------------- CUSTOMER IO INPUTS ---------------  //
+#define PIN_LOW_MODE_IN                     _RB3
+#define PIN_HIGH_MODE_IN                    _RB2
+#define ILL_MODE_BIT_SELECTED               0 
+
+
+
+
+// ------------ SYSTEM IO INPUTS ------------------ //
+#define PIN_KEY_LOCK_IN                     _RF7
+#define ILL_KEY_LOCK_FAULT                  1
+
+#define PIN_PANEL_IN                        _RF8
+#define ILL_PANEL_OPEN                      1
+
 #define PIN_RF_OK                           _RA7
 #define ILL_PIN_RF_FAULT                    0
 
-#define TRIS_PIN_GUN_OK                     _TRISA6
-#define PIN_GUN_OK                          _RA6
-
-#define TRIS_PIN_PFN_OK                     _TRISG0
 #define PIN_PFN_OK                          _RG0
 #define ILL_PIN_PFN_FAULT                   0
 
-//Communications
-#define COMM_RX_TRIS                        _TRISF4		//U2RX
-#define COMM_RX_PIN                         _RF4
-#define COMM_TX_TRIS                        _TRISF5		//U2TX
+#define PIN_XRAY_CMD_MISMATCH_IN            _RD14
+#define ILL_XRAY_CMD_MISMATCH               1
+
+
+// ------------ LOAD SHIFT REGISTER OUTPUTS ------------------ //
+#define PIN_LD_DELAY_GUN_OUT		    _LATD11
+#define PIN_LD_DELAY_AFC_OUT		    _LATD13
+#define PIN_LD_DELAY_PFN_OUT		    _LATD12
+
+
+// ------------------ TRIGGER WIDTH INTERFACE --------------- //
+#define PIN_TRIG_INPUT                      _RF6
+#define ILL_TRIG_ON                         1
+
+#define PIN_PW_CLR_CNT_OUT                  _LATD5
+#define OLL_PW_CLR_CNT                      1
+
+// UART
+#define PIN_RS_485_DRIVER_ENABLE            _LATG1
+#define OLL_RS_485_RECEIVE_MODE             0
+
 
 
 
@@ -372,20 +325,6 @@ typedef struct{
 #define MEDIUM_DOSE             0xCC
 #define LOW_DOSE                0xAA
 #define ULTRA_LOW_DOSE          0x99
-
-//Pin requirements
-#define PIN_ID_SHIFT_OUT	_LATC2
-#define TRIS_PIN_ID_SHIFT_OUT   _TRISC2
-#define OLL_ID_SHIFT            1
-
-#define PIN_ID_CLK_OUT 		_LATC3
-#define TRIS_PIN_ID_CLK_OUT	_TRISC3
-#define OLL_ID_CLK   		1
-
-#define PIN_ID_DATA_IN          _RC4
-#define TRIS_PIN_ID_DATA_IN     _TRISC4
-#define ILL_ID_DATA  		1
-
 
 
 

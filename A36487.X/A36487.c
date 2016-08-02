@@ -14,7 +14,6 @@ unsigned int  uart2_next_byte;
 
 void DoStateMachine(void);
 void InitializeA36487(void);
-void InitPins(void); // DPARKER Change this to standard defenitions
 unsigned char ReadDosePersonality(void);
 void DoA36487(void);
 void DoStartupLEDs(void);
@@ -69,6 +68,7 @@ void DoStateMachine(void) {
     PIN_CPU_HV_ENABLE_OUT = !OLL_CPU_HV_ENABLE;
     PIN_CPU_XRAY_ENABLE_OUT = !OLL_CPU_XRAY_ENABLE;
     PIN_CPU_WARNING_LAMP_OUT = !OLL_CPU_WARNING_LAMP;
+    global_data_A36487.counter_config_received = 0;
     while (global_data_A36487.control_state == STATE_WAIT_FOR_CONFIG) {
       DoA36487();
       DoStartupLEDs();
@@ -194,11 +194,30 @@ void DoStateMachine(void) {
 
 
 void InitializeA36487(void) {
-  
-  InitPins();
-  
-  global_data_A36487.counter_config_received = 0;
-  
+
+  // Initialize Pins
+  PIN_CPU_READY_OUT           = !OLL_CPU_READY;
+  PIN_CPU_STANDBY_OUT         = !OLL_CPU_STANDBY;  
+  PIN_ID_SHIFT_OUT            = !OLL_ID_SHIFT;
+  PIN_ID_CLK_OUT              = !OLL_ID_CLK;
+  PIN_CPU_SUMFLT_OUT          = !OLL_CPU_SUMFLT;
+  PIN_PW_CLR_CNT_OUT          = !OLL_PW_CLR_CNT;                // clear active
+  PIN_CPU_WARMUP_OUT          = !OLL_CPU_WARMUP;
+  PIN_LD_DELAY_PFN_OUT        = 0;
+  PIN_LD_DELAY_AFC_OUT        = 0;
+  PIN_LD_DELAY_GUN_OUT        = 0;
+  PIN_LED_READY               = !OLL_LED_ON;
+  PIN_LED_XRAY_ON             = !OLL_LED_ON;
+  PIN_RS_485_DRIVER_ENABLE    = OLL_RS_485_RECEIVE_MODE;
+
+  // Initialize all I/O Registers
+  TRISA = A36487_TRISA_VALUE;
+  TRISB = A36487_TRISB_VALUE;
+  TRISC = A36487_TRISC_VALUE;
+  TRISD = A36487_TRISD_VALUE;
+  TRISF = A36487_TRISF_VALUE;
+  TRISG = A36487_TRISG_VALUE;
+
   // Set up external INT3 */
   // This is the trigger interrupt
   _INT3IF = 0;		// Clear Interrupt flag
@@ -208,16 +227,21 @@ void InitializeA36487(void) {
   
 
   // Setup Timer 1 to measure interpulse period.
-  T1CON = T1CON_VALUE
-  PR1 = PR1_VALUE_400mS
+  T1CON = T1CON_VALUE;
+  PR1 = PR1_VALUE_400mS;
   
-  // 10mS Period
+  // Setupt Timer 2 to generate 10mS Period
   T2CON = T2CON_VALUE;
   PR2 = PR2_VALUE_10mS;
   TMR2 = 0;
   _T2IF = 0;
   
 
+
+
+  // Read the personality module
+  // DPARKER THIS IS NOT WORKING
+  // DPARKER Create a function to manage personality Reading
 
   global_data_A36487.personality = 0;
   global_data_A36487.personality = ReadDosePersonality(); // DPARKER UPDATE THIS FUNCTION IT DOESN'T WORK
@@ -247,145 +271,35 @@ void InitializeA36487(void) {
   }
 
 
+  // Initialize the Slave Can Module
+  _STATUS_CUSTOMER_X_RAY_DISABLE = 1;
   ETMEEPromUseInternal();
   ETMCanSlaveInitialize(CAN_PORT_1, FCY, ETM_CAN_ADDR_PULSE_SYNC_BOARD, _PIN_RG14, 4, _PIN_RG12, _PIN_RC1);
   ETMCanSlaveLoadConfiguration(36487, 251, FIRMWARE_AGILE_REV, FIRMWARE_BRANCH, FIRMWARE_BRANCH_REV);
   
-  _STATUS_CUSTOMER_HV_DISABLE = 1;
-  
-  _STATUS_CUSTOMER_X_RAY_DISABLE = 1;
-  
-  _STATUS_LOW_MODE_OVERRIDE = 1;
-  
-  _STATUS_HIGH_MODE_OVERRIDE = 0;
-  
-  ETMDigitalInitializeInput(&global_data_A36487.pfn_fan_fault, ILL_PIN_PFN_FAULT, 50);
 
+  // Configure SPI Module to write to the delay line sift Registers
   ConfigureSPI(ETM_SPI_PORT_2, ETM_DEFAULT_SPI_CON_VALUE, ETM_DEFAULT_SPI_CON2_VALUE, ETM_DEFAULT_SPI_STAT_VALUE, SPI_CLK_5_MBIT, FCY);
   // DPARKER CONSIDER WRITING MODULE FOR SHIFT REGISTER DELAY LINE
 
+  
   // Configure UART2 for communicating with Customer
+  U1BRG = A36487_U2_BRG_VALUE;
+  U1STA = A36487_U2_STA_VALUE;
+  U1MODE = A36487_U2_MODE_VALUE;
   uart2_next_byte = 0;  
   _U2RXIF = 0;
   _U2RXIP = 6;
   _U2RXIE = 1;
 
-
-  U1BRG = A36487_U2_BRG_VALUE;
-  U1STA = A36487_U2_STA_VALUE;
-  U1MODE = A36487_U2_MODE_VALUE;
-
+  
+  // Initialize the ADC to be off with all pins digital inputs
   ADCON1 = ADCON1_SETTING;  
   ADPCFG = ADPCFG_SETTING;
-}
 
+  // Initialize the digital faults
+  ETMDigitalInitializeInput(&global_data_A36487.pfn_fan_fault, ILL_PIN_PFN_FAULT, 50);
 
-void InitPins() {
-
-  //Trigger Measurement Pins
-  TRIS_PIN_TRIG_INPUT             = TRIS_INPUT_MODE;
-  PIN_PW_SHIFT_OUT                = !OLL_PW_SHIFT;
-  PIN_PW_CLR_CNT_OUT              = !OLL_PW_CLR_CNT;                // clear active
-  PIN_PW_HOLD_LOWRESET_OUT        = !OLL_PW_HOLD_LOWRESET;	 // reset active
-  TRIS_PIN_PW_SHIFT_OUT           = TRIS_OUTPUT_MODE;
-  TRIS_PIN_PW_CLR_CNT_OUT         = TRIS_OUTPUT_MODE;
-  TRIS_PIN_PW_HOLD_LOWRESET_OUT   = TRIS_OUTPUT_MODE;
-  TRIS_PIN_40US_IN1               = TRIS_INPUT_MODE;
-  TRIS_PIN_40US_IN2               = TRIS_INPUT_MODE;
-  TRIS_PIN_TRIG_INPUT             = TRIS_INPUT_MODE;
-  
-  // Personality ID Pins
-  PIN_ID_SHIFT_OUT            = !OLL_ID_SHIFT;
-  TRIS_PIN_ID_SHIFT_OUT       = TRIS_OUTPUT_MODE;
-  PIN_ID_CLK_OUT              = !OLL_ID_CLK;
-  TRIS_PIN_ID_CLK_OUT         = TRIS_OUTPUT_MODE;
-  TRIS_PIN_ID_DATA_IN         = TRIS_INPUT_MODE;
-  
-  //Spare pins (not used in current application)
-  TRIS_PIN_PACKAGE_ID1_IN         = TRIS_INPUT_MODE;
-  TRIS_PIN_READY_FOR_ANALOG_OUT   = TRIS_OUTPUT_MODE;
-  PIN_READY_FOR_ANALOG_OUT        = OLL_READY_FOR_ANALOG;
-  
-  //Control to PFN control board for Gantry/Portal Selection
-  TRIS_PIN_MODE_OUT           = TRIS_OUTPUT_MODE;
-  
-  //Hardware Status
-  TRIS_PIN_KEY_LOCK_IN            = TRIS_INPUT_MODE;
-  TRIS_PIN_PANEL_IN               = TRIS_INPUT_MODE;
-  TRIS_PIN_XRAY_CMD_MISMATCH_IN   = TRIS_INPUT_MODE;
-  //    PIN_CUSTOMER_BEAM_ENABLE_IN     = !ILL_CUSTOMER_BEAM_ENABLE;
-  TRIS_PIN_CUSTOMER_BEAM_ENABLE_IN = TRIS_INPUT_MODE;
-  PIN_CUSTOMER_XRAY_ON_IN         = !ILL_CUSTOMER_XRAY_ON;
-  TRIS_PIN_CUSTOMER_XRAY_ON_IN    = TRIS_INPUT_MODE;
-  
-  //Energy Select Pins
-  TRIS_PIN_LOW_MODE_IN        = TRIS_INPUT_MODE;
-  TRIS_PIN_HIGH_MODE_IN 	= TRIS_INPUT_MODE;
-  PIN_ENERGY_CPU_OUT          = !OLL_ENERGY_CPU;
-  TRIS_PIN_ENERGY_CPU_OUT     = TRIS_OUTPUT_MODE;
-  TRIS_PIN_AFC_TRIGGER_OK_OUT = TRIS_OUTPUT_MODE;
-  PIN_AFC_TRIGGER_OK_OUT      = OLL_AFC_TRIGGER_OK;
-  PIN_RF_POLARITY_OUT         = OLL_RF_POLARITY;
-  TRIS_PIN_RF_POLARITY_OUT    = TRIS_OUTPUT_MODE;
-  PIN_HVPS_POLARITY_OUT       = !OLL_HVPS_POLARITY;
-  TRIS_PIN_HVPS_POLARITY_OUT  = TRIS_OUTPUT_MODE;
-  PIN_GUN_POLARITY_OUT        = !OLL_GUN_POLARITY;
-  TRIS_PIN_GUN_POLARITY_OUT   = TRIS_OUTPUT_MODE;
-  TRIS_PIN_ENERGY_CMD_IN1     = TRIS_INPUT_MODE;
-  TRIS_PIN_ENERGY_CMD_IN2     = TRIS_INPUT_MODE;
-  
-  //State Hardware Control
-  TRIS_PIN_CPU_HV_ENABLE_OUT      = TRIS_OUTPUT_MODE;
-  PIN_CPU_HV_ENABLE_OUT           = !OLL_CPU_HV_ENABLE;
-  TRIS_PIN_CPU_XRAY_ENABLE_OUT    = TRIS_OUTPUT_MODE;
-  PIN_CPU_XRAY_ENABLE_OUT         = !OLL_CPU_XRAY_ENABLE;
-  TRIS_PIN_CPU_WARNING_LAMP_OUT   = TRIS_OUTPUT_MODE;
-  PIN_CPU_WARNING_LAMP_OUT        = !OLL_CPU_WARNING_LAMP;
-  TRIS_PIN_CPU_STANDBY_OUT        = TRIS_OUTPUT_MODE;
-  PIN_CPU_STANDBY_OUT             = !OLL_CPU_STANDBY;
-  TRIS_PIN_CPU_READY_OUT          = TRIS_OUTPUT_MODE;
-  PIN_CPU_READY_OUT               = !OLL_CPU_READY;
-  TRIS_PIN_CPU_SUMFLT_OUT         = TRIS_OUTPUT_MODE;
-  PIN_CPU_SUMFLT_OUT              = !OLL_CPU_SUMFLT;
-  TRIS_PIN_CPU_WARMUP_OUT         = TRIS_OUTPUT_MODE;
-  //    PIN_CPU_WARMUP_OUT              = !OLL_CPU_WARMUP;
-  
-  //LEDs
-  TRIS_PIN_LED_READY          = TRIS_OUTPUT_MODE;
-  PIN_LED_READY               = !OLL_LED_ON;
-  //TRIS_PIN_LED_STANDBY        = TRIS_OUTPUT_MODE;
-  //PIN_LED_STANDBY             = !OLL_LED_ON;
-  //TRIS_PIN_LED_WARMUP         = TRIS_OUTPUT_MODE;
-  //    PIN_LED_WARMUP              = !OLL_LED_ON;
-  TRIS_PIN_LED_XRAY_ON        = TRIS_OUTPUT_MODE;
-  PIN_LED_XRAY_ON             = !OLL_LED_ON;
-  //TRIS_PIN_LED_SUMFLT         = TRIS_OUTPUT_MODE;
-  //PIN_LED_SUMFLT              = !OLL_LED_ON;
-  
-  // Pins for loading the delay lines
-  PIN_SPI_CLK_OUT             = 0;
-  TRIS_PIN_SPI_CLK_OUT        = TRIS_OUTPUT_MODE;
-  PIN_SPI_DATA_OUT            = 0;
-  TRIS_PIN_SPI_DATA_OUT       = TRIS_OUTPUT_MODE;
-  TRIS_PIN_SPI_DATA_IN        = TRIS_INPUT_MODE;
-  TRIS_PIN_LD_DELAY_PFN_OUT   = TRIS_OUTPUT_MODE;
-  PIN_LD_DELAY_PFN_OUT        = 0;
-  TRIS_PIN_LD_DELAY_AFC_OUT   = TRIS_OUTPUT_MODE;
-  PIN_LD_DELAY_AFC_OUT        = 0;
-  TRIS_PIN_LD_DELAY_GUN_OUT   = TRIS_OUTPUT_MODE;
-  PIN_LD_DELAY_GUN_OUT        = 0;
-  
-  //Bypass these to allow xray on
-  TRIS_PIN_RF_OK             = TRIS_INPUT_MODE;
-  TRIS_PIN_GUN_OK            = TRIS_INPUT_MODE;
-  TRIS_PIN_PFN_OK            = TRIS_INPUT_MODE;
-  
-  //Communications
-  COMM_DRIVER_ENABLE_TRIS = TRIS_OUTPUT_MODE;
-  COMM_DRIVER_ENABLE_PIN = 0;
-  COMM_RX_TRIS = TRIS_INPUT_MODE;
-  COMM_TX_TRIS = TRIS_OUTPUT_MODE;
-  
 }
 
 unsigned char ReadDosePersonality() {
