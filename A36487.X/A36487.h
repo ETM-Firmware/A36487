@@ -251,13 +251,13 @@ typedef struct{
 
 // ------------ Personality Module Interface --------------- //
 #define PIN_ID_SHIFT_OUT                    _LATC2
-#define OLL_ID_SHIFT                        1
+//#define OLL_ID_SHIFT                        1
 
 #define PIN_ID_CLK_OUT                      _LATC3
-#define OLL_ID_CLK                          1
+  //#define OLL_ID_CLK                          1
 
 #define PIN_ID_DATA_IN                      _RC4
-#define ILL_ID_DATA                         1
+  //#define ILL_ID_DATA                         1
 
 
 

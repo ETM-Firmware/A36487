@@ -198,8 +198,8 @@ void InitializeA36487(void) {
   // Initialize Pins
   PIN_CPU_READY_OUT           = !OLL_CPU_READY;
   PIN_CPU_STANDBY_OUT         = !OLL_CPU_STANDBY;  
-  PIN_ID_SHIFT_OUT            = !OLL_ID_SHIFT;
-  PIN_ID_CLK_OUT              = !OLL_ID_CLK;
+  PIN_ID_SHIFT_OUT            = 0;
+  PIN_ID_CLK_OUT              = 0;
   PIN_CPU_SUMFLT_OUT          = !OLL_CPU_SUMFLT;
   PIN_PW_CLR_CNT_OUT          = !OLL_PW_CLR_CNT;                // clear active
   PIN_CPU_WARMUP_OUT          = !OLL_CPU_WARMUP;
@@ -244,7 +244,10 @@ void InitializeA36487(void) {
   // DPARKER Create a function to manage personality Reading
 
   global_data_A36487.personality = 0;
-  global_data_A36487.personality = ReadDosePersonality(); // DPARKER UPDATE THIS FUNCTION IT DOESN'T WORK
+  global_data_A36487.personality = ReadDosePersonality();
+  Nop();
+  Nop();
+  Nop();
   global_data_A36487.personality = 0; // DPARKER ADDED FOR TESTING TO MAKE IT WORK
 
   _STATUS_PERSONALITY_READ_COMPLETE = 1;
@@ -304,60 +307,48 @@ void InitializeA36487(void) {
 
 unsigned char ReadDosePersonality() {
   unsigned int data;
-  unsigned char i, data1, data2;
+  unsigned int i;
   
-  PIN_ID_CLK_OUT   = !OLL_ID_CLK;
-  PIN_ID_SHIFT_OUT = !OLL_ID_SHIFT; // load the reg
-  __delay32(1); // 100ns for 10M TCY
-  PIN_ID_SHIFT_OUT = OLL_ID_SHIFT;  // enable shift
-  __delay32(1); // 100ns for 10M TCY
-  
-  data = PIN_ID_DATA_IN;
-  
-  for (i = 0; i < 8; i++) {
-    PIN_ID_CLK_OUT = OLL_ID_CLK;
-    data <<= 1;
-    data |= PIN_ID_DATA_IN;
-    PIN_ID_CLK_OUT = !OLL_ID_CLK;
-    __delay32(1); // 100ns for 10M TCY
+
+  PIN_ID_CLK_OUT   = 0;  
+  PIN_ID_SHIFT_OUT = 0;  
+  __delay32(10);
+  PIN_ID_SHIFT_OUT = 1;  
+  __delay32(10);
+
+  data = 0;
+
+  if (PIN_ID_DATA_IN) {
+    data |= 0x01;
   }
   
-  //if bits do not match then bad module
-  data1 = data & 0x01;
-  data2 = data & 0x10;
-  if (data1 != (data2 >> 4))
-    return 0xFF;
-  data1 = data & 0x02;
-  data2 = data & 0x20;
-  if (data1 != (data2 >> 4))
-    return 0xFF;
-  data1 = data & 0x04;
-  data2 = data & 0x40;
-  if (data1 != (data2 >> 4))
-    return 0xFF;
-  data1 = data & 0x08;
-  data2 = data & 0x80;
-  if (data1 != (data2 >> 4))
-    return 0xFF;
-  
-  //bit 3 is 1 except when 0,1,2 are 1
-  data1 = data & 0x08;
-  data2 = data & 0x07;
-  if (data1 != data2)
-    return 0xFF;
-  
-  if (data == ULTRA_LOW_DOSE)
+  for (i = 0; i < 8; i++) {
+    PIN_ID_CLK_OUT = 0;
+    data <<= 1;
+    PIN_ID_CLK_OUT = 1;
+    __delay32(5);
+    if (PIN_ID_DATA_IN) {
+      data |= 0x01;
+    } 
+  }
+
+  if (data == ULTRA_LOW_DOSE) {
     return 0x02;
-  else if (data == LOW_DOSE)
+  }
+
+  if (data == LOW_DOSE) {
     return 0x04;
-  else if (data == MEDIUM_DOSE)
+  }
+  
+  if (data == MEDIUM_DOSE) {
     return 0x08;
-  else if (data == HIGH_DOSE)
+  }
+  
+  if (data == HIGH_DOSE) {
     return 0x10;
-  else if (data == 0xFF)
-    return data;
-  else
-    return 0;
+  }
+ 
+  return 0xFF;
 }
 
 void DoA36487(void) {
@@ -726,7 +717,8 @@ void __attribute__((interrupt(__save__(CORCON,SR)), no_auto_psv)) _U2RXInterrupt
   }
 }
 
-
+// DPARKER - CHANGE TO INT1 or INT2 as this is the actual trigger pulse
+// DPARKER - Remove the trigger stayed on test
 #define MIN_PERIOD 150 // 960uS 1041 Hz// 
 void __attribute__((interrupt(__save__(CORCON,SR)), no_auto_psv)) _INT3Interrupt(void) {
   // A trigger was recieved.
