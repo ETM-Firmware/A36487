@@ -3,8 +3,11 @@
 
 
 
-#define DOSE_COMMAND_LOW_ENERGY   0  // DPARKER - Move these to the CAN Module - All boards need to know if the energy is commanded high or low
+#define DOSE_COMMAND_LOW_ENERGY   0  
 #define DOSE_COMMAND_HIGH_ENERGY  1
+// DPARKER - Move these to the CAN Module - All boards need to know if the energy is commanded high or low
+// They need to be incorporated into the can_slave modules
+
 
 // Global Variables
 TYPE_GLOBAL_DATA_A36487 global_data_A36487;
@@ -137,12 +140,22 @@ void DoStateMachine(void) {
     while (global_data_A36487.control_state == STATE_X_RAY_ENABLE) {
       DoA36487();
 
+#ifdef __COMPILE_MODE_2_5
+      // For the 2.5 Do Not Pulse in both Mode bits are in the same state
       if (PIN_LOW_MODE_IN == PIN_HIGH_MODE_IN) {
 	PIN_CPU_XRAY_ENABLE_OUT = !OLL_CPU_XRAY_ENABLE;
       } else {
 	PIN_CPU_XRAY_ENABLE_OUT = OLL_CPU_XRAY_ENABLE;
       }
-      
+#else
+      // For the 6/4, Do not pulse if neither Mode Bits are selected
+      if ((PIN_LOW_MODE_IN != ILL_MODE_BIT_SELECTED) && (PIN_HIGH_MODE_IN != ILL_MODE_BIT_SELECTED)) {
+	PIN_CPU_XRAY_ENABLE_OUT = !OLL_CPU_XRAY_ENABLE;
+      } else {
+	PIN_CPU_XRAY_ENABLE_OUT = OLL_CPU_XRAY_ENABLE;
+      }
+#endif      
+
       if (PIN_CUSTOMER_XRAY_ON_IN) {
 	PIN_CPU_WARNING_LAMP_OUT = OLL_CPU_WARNING_LAMP;
       } else {
@@ -243,15 +256,18 @@ void InitializeA36487(void) {
   // DPARKER THIS IS NOT WORKING
   // DPARKER Create a function to manage personality Reading
 
+#ifdef __COMPILE_MODE_2_5
   global_data_A36487.personality = 0;
+#else
   global_data_A36487.personality = ReadDosePersonality();
-  Nop();
-  Nop();
-  Nop();
-  global_data_A36487.personality = 0; // DPARKER ADDED FOR TESTING TO MAKE IT WORK
+  global_data_A36487.personality = 0; // DPARKER THIS HAS BEEN ADDED FOR TESTING ONLY - REMOVE
+#endif
 
-  _STATUS_PERSONALITY_READ_COMPLETE = 1;
-
+  _STATUS_PERSONALITY_READ_COMPLETE = 0;
+  if (global_data_A36487.personality != 0xFF) {
+    _STATUS_PERSONALITY_READ_COMPLETE = 1;
+  }
+  
   _PERSONALITY_BIT_0 = 0;
   _PERSONALITY_BIT_1 = 0;
   _PERSONALITY_BIT_2 = 0;
@@ -333,19 +349,19 @@ unsigned char ReadDosePersonality() {
   }
 
   if (data == ULTRA_LOW_DOSE) {
-    return 0x02;
+    return 3;
   }
 
   if (data == LOW_DOSE) {
-    return 0x04;
+    return 2;
   }
   
   if (data == MEDIUM_DOSE) {
-    return 0x08;
+    return 1;
   }
   
   if (data == HIGH_DOSE) {
-    return 0x10;
+    return 0;
   }
  
   return 0xFF;
@@ -531,9 +547,9 @@ void DoStartupLEDs(void) {
 
 
 void DoPostTriggerProcess(void) {
-  global_data_A36487.pulses_on++;       // This counts the pulses
-  ETMCanSlavePulseSyncSendNextPulseLevel(global_data_A36487.this_pulse_level_energy_command, global_data_A36487.pulses_on, log_data_rep_rate_deci_hertz);
-
+  global_data_A36487.pulses_on++; // This counts the pulses
+  ETMCanSlavePulseSyncSendNextPulseLevel(GetThisPulseLevel(), global_data_A36487.pulses_on, log_data_rep_rate_deci_hertz);
+  
   global_data_A36487.period_filtered = RCFilterNTau(global_data_A36487.period_filtered, global_data_A36487.last_period, RC_FILTER_4_TAU);  // Update the PFN
   ProgramShiftRegistersDelays();  // Load the shift registers
 
@@ -622,14 +638,26 @@ void ProgramShiftRegistersGrid(unsigned char dose_command) {
 
 
 unsigned int GetThisPulseLevel(void) {
-#ifdef __COMPILE_MODE_2_5
-  if ((PIN_LOW_MODE_IN != ILL_MODE_BIT_SELECTED) && (PIN_HIGH_MODE_IN != ILL_MODE_BIT_SELECTED)) {
-    // Neither High or Low Mode selected
-    return DOSE_COMMAND_HIGH_ENERGY;
-  }
-  
+  /*
+    If High Mode is Selected and Low Mode is not, Return High Mode
+    If Low Mode is Selected and High Mode is not, Return low Mode
+    If Neither mode is selected, return high mode (the system will be disabled by another function)
+    If Both modes are selected
+       - For the 6/4 use the software level select
+       - For the 2.5 return high mode, but X-Rays will be inhibited by another function
+   */
+
   if ((PIN_LOW_MODE_IN == ILL_MODE_BIT_SELECTED) && (PIN_HIGH_MODE_IN == ILL_MODE_BIT_SELECTED)) {
     // High and low mode selected
+#ifdef __COMPILE_MODE_2_5
+    return DOSE_COMMAND_HIGH_ENERGY;
+#else
+    return global_data_A36487.this_pulse_level_energy_command;
+#endif
+  }
+  
+  if ((PIN_LOW_MODE_IN != ILL_MODE_BIT_SELECTED) && (PIN_HIGH_MODE_IN != ILL_MODE_BIT_SELECTED)) {
+    // Neither High or Low Mode selected - X_Rays will be disabled
     return DOSE_COMMAND_HIGH_ENERGY;
   }
   
@@ -644,10 +672,6 @@ unsigned int GetThisPulseLevel(void) {
   }
 
   return DOSE_COMMAND_HIGH_ENERGY;
-  
-#else
-  // Place code for 6/4 system here - When 6/4 system moves to CAN
-#endif
 }
 
 
