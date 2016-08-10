@@ -26,7 +26,7 @@
 
   Timer1 - Used to measure PRF and 
   Timer2 - Used for 10ms Timing
-  Timer3 - Not used
+  Timer3 - Used to Limit the PRF
 
   INT3 - Used for Pulse Trigger ISR
 
@@ -74,7 +74,7 @@ typedef struct{
 #define _FAULT_CAN_COMMUNICATION_LATCHED           _FAULT_1
 #define _FAULT_RF_STATUS                           _FAULT_2
 #define _FAULT_PFN_STATUS                          _FAULT_3
-#define _FAULT_TRIGGER_STAYED_ON                   _FAULT_4
+//#define _FAULT_TRIGGER_STAYED_ON                   _FAULT_4
 #define _FAULT_PANEL_OPEN                          _FAULT_5
 #define _FAULT_KEYLOCK_OPEN                        _FAULT_6
 
@@ -86,7 +86,7 @@ typedef struct{
 #define _STATUS_PERSONALITY_READ_COMPLETE          _WARNING_4
 //#define _STATUS_PANEL_OPEN                       _WARNING_5
 //#define _STATUS_KEYLOCK_OPEN                     _WARNING_6
-#define _STATUS_TRIGGER_STAYED_ON                  _WARNING_7
+  //#define _STATUS_TRIGGER_STAYED_ON                  _WARNING_7
 
 
 #define _PERSONALITY_BIT_0                         _NOT_LOGGED_0
@@ -146,17 +146,17 @@ typedef struct{
 
 
 // DIGITAL OUTPUT PINS
-#define PIN_CPU_HV_ENABLE_OUT               _RD8
+#define PIN_CPU_HV_ENABLE_OUT               _LATD8
 #define OLL_CPU_HV_ENABLE                   1
 
-#define PIN_CPU_XRAY_ENABLE_OUT             _RC13
+#define PIN_CPU_XRAY_ENABLE_OUT             _LATC13
 #define OLL_CPU_XRAY_ENABLE                 1
 
-#define PIN_CPU_WARNING_LAMP_OUT            _RD9
+#define PIN_CPU_WARNING_LAMP_OUT            _LATD9
 #define OLL_CPU_WARNING_LAMP                1
 
-
-
+#define PIN_PIC_PRF_OK                      _LATD6
+#define OLL_PIC_PRF_INHIBIT                 0
 
 
 
@@ -196,6 +196,9 @@ typedef struct{
 #define T2CON_VALUE                    (T2_ON & T2_IDLE_CON & T2_GATE_OFF & T2_PS_1_8 & T2_SOURCE_INT & T2_32BIT_MODE_OFF)
 #define PR2_VALUE_10mS                 12500                        
 
+#define T3CON_VALUE                    (T3_ON & T3_IDLE_CON & T3_GATE_OFF & T3_PS_1_1 & T3_SOURCE_INT)
+#define TMR3_DELAY_2400US              24000                        
+#define TMR3_DELAY_200US                2000
 
 
 // ***Digital Pin Definitions***
@@ -299,6 +302,8 @@ typedef struct{
 #define PIN_XRAY_CMD_MISMATCH_IN            _RD14
 #define ILL_XRAY_CMD_MISMATCH               1
 
+#define PIN_40US_PULSE                      _RA15
+#define ILL_PIN_40US_PULSE_ACTIVE           1
 
 // ------------ LOAD SHIFT REGISTER OUTPUTS ------------------ //
 #define PIN_LD_DELAY_GUN_OUT		    _LATD11
@@ -307,9 +312,6 @@ typedef struct{
 
 
 // ------------------ TRIGGER WIDTH INTERFACE --------------- //
-#define PIN_TRIG_INPUT                      _RF6
-#define ILL_TRIG_ON                         1
-
 #define PIN_PW_CLR_CNT_OUT                  _LATD5
 #define OLL_PW_CLR_CNT                      1
 

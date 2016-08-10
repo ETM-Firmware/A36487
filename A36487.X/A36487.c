@@ -236,9 +236,14 @@ void InitializeA36487(void) {
   _INT3IF = 0;		// Clear Interrupt flag
   _INT3IE = 1;		// Enable INT3 Interrupt
   _INT3EP = 1; 	        // Interrupt on falling edge
-  _INT3IP = 7;		// Set interrupt to highest priority
+  _INT3IP = 6;		// Set interrupt to high priority
   
 
+  // Set up the TM3 interrupt
+  _T3IF = 0;
+  _T3IE = 0;
+  _T3IP = 7;            // Set interrupt to highest priority
+  
   // Setup Timer 1 to measure interpulse period.
   T1CON = T1CON_VALUE;
   PR1 = PR1_VALUE_400mS;
@@ -250,12 +255,13 @@ void InitializeA36487(void) {
   _T2IF = 0;
   
 
+  // Setupt Timer 3 to measure the Pulse Holdoff time to prevent over PRF
+  T3CON = T3CON_VALUE;
+  TMR3 = 0;
+  _T3IF = 0;
 
 
   // Read the personality module
-  // DPARKER THIS IS NOT WORKING
-  // DPARKER Create a function to manage personality Reading
-
 #ifdef __COMPILE_MODE_2_5
   global_data_A36487.personality = 0;
 #else
@@ -308,7 +314,7 @@ void InitializeA36487(void) {
   U1MODE = A36487_U2_MODE_VALUE;
   uart2_next_byte = 0;  
   _U2RXIF = 0;
-  _U2RXIP = 6;
+  _U2RXIP = 5;
   _U2RXIE = 1;
 
   
@@ -435,11 +441,6 @@ void DoA36487(void) {
     }
   }
 
-  if (ETMCanSlaveGetSyncMsgResetEnable() && (PIN_TRIG_INPUT != ILL_TRIG_ON)) {
-    _FAULT_TRIGGER_STAYED_ON = 0;
-    _STATUS_TRIGGER_STAYED_ON = 0;
-  }
-
   // ------------- UPDATE STATUS -------------------- //
   _STATUS_CUSTOMER_HV_DISABLE = !PIN_CUSTOMER_BEAM_ENABLE_IN;
   _STATUS_CUSTOMER_X_RAY_DISABLE = !PIN_CUSTOMER_XRAY_ON_IN;
@@ -563,12 +564,7 @@ void DoPostTriggerProcess(void) {
   }
     
   // This is used to detect if the trigger is high (which would cause constant pulses to the system)
-  if (PIN_TRIG_INPUT == ILL_TRIG_ON) {
-    // if pulse trig stays on, disable pulsing and flag fault
-    _STATUS_TRIGGER_STAYED_ON = 1;
-    _FAULT_TRIGGER_STAYED_ON = 1;
-    PIN_CPU_XRAY_ENABLE_OUT = !OLL_CPU_XRAY_ENABLE;
-  }
+  PIN_PIC_PRF_OK = OLL_PIC_PRF_INHIBIT;
 }
 
 
@@ -741,8 +737,6 @@ void __attribute__((interrupt(__save__(CORCON,SR)), no_auto_psv)) _U2RXInterrupt
   }
 }
 
-// DPARKER - CHANGE TO INT1 or INT2 as this is the actual trigger pulse
-// DPARKER - Remove the trigger stayed on test
 #define MIN_PERIOD 150 // 960uS 1041 Hz// 
 void __attribute__((interrupt(__save__(CORCON,SR)), no_auto_psv)) _INT3Interrupt(void) {
   // A trigger was recieved.
@@ -753,16 +747,15 @@ void __attribute__((interrupt(__save__(CORCON,SR)), no_auto_psv)) _INT3Interrupt
     // TMR1 is used to time the time between INT3 interrupts
     global_data_A36487.last_period = TMR1;
     TMR1 = 0;
+    // Start The Holdoff Timer for the next pulse
+    TMR3 = 0;
+    PR3 = TMR3_DELAY_2400US;
+    _T3IF = 0;
+    _T3IE = 1;
     if (_T1IF) {
       // The timer exceed it's period of 400mS - (Will happen if the PRF is less than 2.5Hz)
       global_data_A36487.last_period = 62501;  // This will indicate that the PRF is Less than 2.5Hz
     }
-    /*
-      if (ETMCanSlaveGetSyncMsgPulseSyncDisableHV() || ETMCanSlaveGetSyncMsgPulseSyncDisableXray()) {
-      // We are not pulsing so set the PRF to the minimum
-      global_data_A36487.last_period = 62501;  // This will indicate that the PRF is Less than 2.5Hz
-      }
-    */
     _T1IF = 0;
     
     global_data_A36487.trigger_complete = 1;
@@ -771,6 +764,25 @@ void __attribute__((interrupt(__save__(CORCON,SR)), no_auto_psv)) _INT3Interrupt
   }
   _INT3IF = 0;		// Clear Interrupt flag
 }  
+
+void __attribute__((interrupt, no_auto_psv)) _T3Interrupt(void) {
+  /*
+    We Can't enable XRays when if 40uS Line is high or we could get an error in pulse timing
+    If 40us line is high reset the timer to check again in 200uS
+  */
+
+  if (PIN_40US_PULSE == ILL_PIN_40US_PULSE_ACTIVE) {
+    // Renable this interrupt for 200us from now
+    PR3 = TMR3_DELAY_200US;
+    TMR3 = 0;
+    _T3IF = 0;
+    _T3IE = 1;
+  } else {
+    PIN_PIC_PRF_OK = !OLL_PIC_PRF_INHIBIT;
+    _T3IF = 0;
+    _T3IE = 0;
+  }
+}
 
 
 void __attribute__((interrupt, no_auto_psv)) _DefaultInterrupt(void) {
