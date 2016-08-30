@@ -217,9 +217,11 @@ typedef struct{
 
    C2 - Shift Data Out
    C3 - Shift Clock
+   C13 - Xray Enable
 
    D0 - Sumflt Out
    D5 - Reset Pulse Width Clock
+   D6 - Pic PRF OK
    D10 - Warmup Out
    D11 - Shift Register
    D12 - Shift Register
@@ -234,10 +236,10 @@ typedef struct{
  
 #define A36487_TRISA_VALUE 0b1111111111111111
 #define A36487_TRISB_VALUE 0b1111111111001111
-#define A36487_TRISC_VALUE 0b1111111111110011
-#define A36487_TRISD_VALUE 0b1100001111011110
+#define A36487_TRISC_VALUE 0b1101111111110011
+#define A36487_TRISD_VALUE 0b1100001110011110
 #define A36487_TRISF_VALUE 0b1111111111111111
-#define A36487_TRISG_VALUE 0b0101111111111101
+#define A36487_TRISG_VALUE 0b0101111111111111
 
 
 
@@ -312,12 +314,9 @@ typedef struct{
 
 
 // ------------------ TRIGGER WIDTH INTERFACE --------------- //
+// DPARKER - This will not be needed with new hardware
 #define PIN_PW_CLR_CNT_OUT                  _LATD5
 #define OLL_PW_CLR_CNT                      1
-
-// UART
-#define PIN_RS_485_DRIVER_ENABLE            _LATG1
-#define OLL_RS_485_RECEIVE_MODE             0
 
 
 

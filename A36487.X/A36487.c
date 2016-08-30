@@ -1,5 +1,5 @@
 #include "A36487.h"
-#define __COMPILE_MODE_2_5
+//#define __COMPILE_MODE_2_5
 
 
 
@@ -221,8 +221,7 @@ void InitializeA36487(void) {
   PIN_LD_DELAY_GUN_OUT        = 0;
   PIN_LED_READY               = !OLL_LED_ON;
   PIN_LED_XRAY_ON             = !OLL_LED_ON;
-  PIN_RS_485_DRIVER_ENABLE    = OLL_RS_485_RECEIVE_MODE;
-
+  
   // Initialize all I/O Registers
   TRISA = A36487_TRISA_VALUE;
   TRISB = A36487_TRISB_VALUE;
@@ -309,9 +308,9 @@ void InitializeA36487(void) {
 
   
   // Configure UART2 for communicating with Customer
-  U1BRG = A36487_U2_BRG_VALUE;
-  U1STA = A36487_U2_STA_VALUE;
-  U1MODE = A36487_U2_MODE_VALUE;
+  U2BRG = A36487_U2_BRG_VALUE;
+  U2STA = A36487_U2_STA_VALUE;
+  U2MODE = A36487_U2_MODE_VALUE;
   uart2_next_byte = 0;  
   _U2RXIF = 0;
   _U2RXIP = 5;
@@ -649,6 +648,7 @@ unsigned int GetThisPulseLevel(void) {
     return DOSE_COMMAND_HIGH_ENERGY;
 #else
     return global_data_A36487.this_pulse_level_energy_command;
+
 #endif
   }
   
@@ -719,19 +719,30 @@ void __attribute__((interrupt(__save__(CORCON,SR)), no_auto_psv)) _U2RXInterrupt
   }
   
   if (uart2_next_byte >= 6) {
-    crc_check   = uart2_input_buffer[4];
+    crc_check   = uart2_input_buffer[5];
     crc_check <<= 8;
-    crc_check  += uart2_input_buffer[5];
+    crc_check  += uart2_input_buffer[4];
 
     if (ETMCRC16(&uart2_input_buffer[0],4) == crc_check) {
+
+      _TRISC14 = 0;
       if (uart2_input_buffer[1] & 0x01) {
 	global_data_A36487.next_pulse_level_energy_command = DOSE_COMMAND_LOW_ENERGY;
       } else {
 	global_data_A36487.next_pulse_level_energy_command = DOSE_COMMAND_HIGH_ENERGY;
       }
+      
+      
       trigger_width = uart2_input_buffer[0];
       trigger_width_filtered = uart2_input_buffer[0];
       ProgramShiftRegistersGrid(uart2_input_buffer[0]);
+      // DPARKER - Debugging Only
+      if (global_data_A36487.next_pulse_level_energy_command == DOSE_COMMAND_HIGH_ENERGY) {
+	_LATC14 = 1;
+      } else {
+	_LATC14 = 0;
+      }
+
     }
     uart2_next_byte = 0;
   }
