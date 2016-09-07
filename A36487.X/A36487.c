@@ -1,7 +1,7 @@
 #include "A36487.h"
 //#define __COMPILE_MODE_2_5
 
-
+unsigned char ReverseBits(unsigned char byte_to_reverse);
 
 #define DOSE_COMMAND_LOW_ENERGY   0  
 #define DOSE_COMMAND_HIGH_ENERGY  1
@@ -711,9 +711,11 @@ void ResetCounter(void) {
 
 void __attribute__((interrupt(__save__(CORCON,SR)), no_auto_psv)) _U2RXInterrupt(void) {
   unsigned int crc_check;
+  unsigned char data;
   _U2RXIF = 0;
   while (U2STAbits.URXDA) {
-    uart2_input_buffer[uart2_next_byte] = U2RXREG;
+    data = U2RXREG;
+    uart2_input_buffer[uart2_next_byte] = ReverseBits(data);
     uart2_next_byte++;
     uart2_next_byte &= 0x000F;
   }
@@ -746,6 +748,43 @@ void __attribute__((interrupt(__save__(CORCON,SR)), no_auto_psv)) _U2RXInterrupt
     }
     uart2_next_byte = 0;
   }
+}
+
+unsigned char ReverseBits(unsigned char byte_to_reverse) {
+  unsigned char output = 0;
+  if (byte_to_reverse & 0b00000001) {
+    output |= 0b10000000;
+  }
+
+  if (byte_to_reverse & 0b00000010) {
+    output |= 0b01000000;
+  }
+
+  if (byte_to_reverse & 0b00000100) {
+    output |= 0b00100000;
+  }
+
+  if (byte_to_reverse & 0b00001000) {
+    output |= 0b00010000;
+  }
+
+  if (byte_to_reverse & 0b00010000) {
+    output |= 0b00001000;
+  }
+
+  if (byte_to_reverse & 0b00100000) {
+    output |= 0b00000100;
+  }
+
+  if (byte_to_reverse & 0b01000000) {
+    output |= 0b00000010;
+  }
+  
+  if (byte_to_reverse & 0b10000000) {
+    output |= 0b00000001;
+  }
+
+  return output;
 }
 
 #define MIN_PERIOD 150 // 960uS 1041 Hz// 
