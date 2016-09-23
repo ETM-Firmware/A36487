@@ -486,6 +486,11 @@ void DoStartupLEDs(void) {
 
 
 void DoPostTriggerProcess(void) {
+  if (TMR1 <= 6) {
+    // The previous trigger happened less than 40uS ago
+    // Need to delay more to garuntee the trigger from customer is not active
+    __delay32(400);
+  }
   
   // This is used to detect if the trigger is high (which would cause constant pulses to the system)
   if (PIN_TRIG_INPUT != ILL_TRIG_ON) {
