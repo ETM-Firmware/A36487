@@ -602,9 +602,9 @@ void ProgramShiftRegistersDelays(void) {
   data <<= 8;
   data  += afc_sample_delay;
   SendAndReceiveSPI(data, ETM_SPI_PORT_2);
-  PIN_LD_DELAY_PFN_OUT = 0;
+  PIN_LD_DELAY_AFC_OUT = 0;
   Nop();
-  PIN_LD_DELAY_PFN_OUT = 1;
+  PIN_LD_DELAY_AFC_OUT = 1;
   Nop();
 }
 
@@ -715,7 +715,8 @@ void __attribute__((interrupt(__save__(CORCON,SR)), no_auto_psv)) _U2RXInterrupt
   _U2RXIF = 0;
   while (U2STAbits.URXDA) {
     data = U2RXREG;
-    uart2_input_buffer[uart2_next_byte] = ReverseBits(data);
+    //uart2_input_buffer[uart2_next_byte] = ReverseBits(data);
+    uart2_input_buffer[uart2_next_byte] = data;
     uart2_next_byte++;
     uart2_next_byte &= 0x000F;
   }
