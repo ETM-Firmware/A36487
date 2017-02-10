@@ -1,5 +1,13 @@
 #include "A36487.h"
-//#define __COMPILE_MODE_2_5
+
+
+
+
+
+void UpdateAnalogDataFromPLC(void);
+void ReadAnalogRegister(void);
+
+
 
 unsigned char ReverseBits(unsigned char byte_to_reverse);
 
@@ -25,7 +33,6 @@ void ProgramShiftRegistersDelays(void);
 void ProgramShiftRegistersGrid(unsigned char dose_command);
 unsigned int GetThisPulseLevel(void);
 unsigned char InterpolateValue(unsigned int val_0, unsigned int val_1, unsigned int val_2, unsigned int val_3, unsigned char index);
-void ResetCounter(void);
 
 
 //Processor Setup
@@ -75,12 +82,10 @@ void DoStateMachine(void) {
     while (global_data_A36487.control_state == STATE_WAIT_FOR_CONFIG) {
       DoA36487();
       DoStartupLEDs();
-
       PIN_CPU_WARMUP_OUT = !OLL_CPU_WARMUP;
       PIN_CPU_STANDBY_OUT = !OLL_CPU_STANDBY;
       PIN_CPU_READY_OUT = !OLL_CPU_READY;
       PIN_CPU_SUMFLT_OUT = OLL_CPU_SUMFLT;
-      
       if ((global_data_A36487.led_flash_counter >= LED_STARTUP_FLASH_TIME) && (global_data_A36487.counter_config_received == 0b1111)) {
 	global_data_A36487.control_state = STATE_HV_OFF;
       }
@@ -96,10 +101,10 @@ void DoStateMachine(void) {
     while (global_data_A36487.control_state == STATE_HV_OFF) {
       DoA36487();
       
-      if (ETMCanSlaveGetSyncMsgPulseSyncDisableHV() == 0) {
+      if (_MACRO_HV_ENABLE) {
 	global_data_A36487.control_state = STATE_HV_ENABLE;
       }
-      
+
       if (_FAULT_REGISTER) {
 	global_data_A36487.control_state = STATE_FAULT;
       }
@@ -115,12 +120,12 @@ void DoStateMachine(void) {
     PIN_CPU_WARNING_LAMP_OUT = !OLL_CPU_WARNING_LAMP;
     while (global_data_A36487.control_state == STATE_HV_ENABLE) {
       DoA36487();
-      
-      if ((ETMCanSlaveGetSyncMsgPulseSyncDisableXray() == 0) && (PIN_CUSTOMER_BEAM_ENABLE_IN == ILL_CUSTOMER_BEAM_ENABLE)) {
+
+      if ((_MACRO_XRAY_ENABLE) && (PIN_CUSTOMER_BEAM_ENABLE_IN == ILL_CUSTOMER_BEAM_ENABLE)) {
 	global_data_A36487.control_state = STATE_X_RAY_ENABLE;
       }
       
-      if (ETMCanSlaveGetSyncMsgPulseSyncDisableHV()) {
+      if (_MACRO_NOT_HV_ENABLE) {
 	global_data_A36487.control_state = STATE_HV_OFF;
       }
 
@@ -156,16 +161,17 @@ void DoStateMachine(void) {
       }
 #endif      
 
+      // DPARKER should be able to remove this ifndef by appopriate tris settings
       if (PIN_CUSTOMER_XRAY_ON_IN) {
 	PIN_CPU_WARNING_LAMP_OUT = OLL_CPU_WARNING_LAMP;
       } else {
 	PIN_CPU_WARNING_LAMP_OUT = !OLL_CPU_WARNING_LAMP;
       }
 
-      if (ETMCanSlaveGetSyncMsgPulseSyncDisableXray() || ETMCanSlaveGetSyncMsgPulseSyncDisableHV() || (PIN_CUSTOMER_BEAM_ENABLE_IN == !ILL_CUSTOMER_BEAM_ENABLE)) {
+      if ((_MACRO_NOT_XRAY_ENABLE) || (_MACRO_NOT_HV_ENABLE) || (PIN_CUSTOMER_BEAM_ENABLE_IN == !ILL_CUSTOMER_BEAM_ENABLE)) {
 	global_data_A36487.control_state = STATE_HV_ENABLE;
       }
-      
+
       if (_FAULT_REGISTER) {
 	global_data_A36487.control_state = STATE_FAULT;
       }
@@ -176,9 +182,11 @@ void DoStateMachine(void) {
   case STATE_FAULT:
     _CONTROL_NOT_CONFIGURED = 0;
     _CONTROL_NOT_READY = 1;
+#ifndef __PLC_INTERFACE
     PIN_CPU_HV_ENABLE_OUT = !OLL_CPU_HV_ENABLE;
     PIN_CPU_XRAY_ENABLE_OUT = !OLL_CPU_XRAY_ENABLE;
     PIN_CPU_WARNING_LAMP_OUT = !OLL_CPU_WARNING_LAMP;
+#endif
     while (global_data_A36487.control_state == STATE_FAULT) {
       DoA36487();
       
@@ -192,9 +200,11 @@ void DoStateMachine(void) {
   default:
     _CONTROL_NOT_CONFIGURED = 1;
     _CONTROL_NOT_READY = 1;
+#ifndef __PLC_INTERFACE
     PIN_CPU_HV_ENABLE_OUT = !OLL_CPU_HV_ENABLE;
     PIN_CPU_XRAY_ENABLE_OUT = !OLL_CPU_XRAY_ENABLE;
     PIN_CPU_WARNING_LAMP_OUT = !OLL_CPU_WARNING_LAMP;
+#endif
     global_data_A36487.control_state = STATE_UNKNOWN;
     while (1) {
       DoA36487();
@@ -209,6 +219,8 @@ void DoStateMachine(void) {
 void InitializeA36487(void) {
 
   // Initialize Pins
+  /* 
+     DPARKER FIX
   PIN_CPU_READY_OUT           = !OLL_CPU_READY;
   PIN_CPU_STANDBY_OUT         = !OLL_CPU_STANDBY;  
   PIN_ID_SHIFT_OUT            = 0;
@@ -221,7 +233,9 @@ void InitializeA36487(void) {
   PIN_LD_DELAY_GUN_OUT        = 0;
   PIN_LED_READY               = !OLL_LED_ON;
   PIN_LED_XRAY_ON             = !OLL_LED_ON;
-  
+  */
+
+
   // Initialize all I/O Registers
   TRISA = A36487_TRISA_VALUE;
   TRISB = A36487_TRISB_VALUE;
@@ -406,7 +420,7 @@ void DoA36487(void) {
     }
   }
 
-  ETMDigitalUpdateInput(&global_data_A36487.pfn_fan_fault, PIN_PFN_OK);
+  ETMDigitalUpdateInput(&global_data_A36487.pfn_fan_fault, PIN_CPU_PFN_OK_IN);
   
   if (ETMDigitalFilteredOutput(&global_data_A36487.pfn_fan_fault) == ILL_PIN_PFN_FAULT) {
     _FAULT_PFN_STATUS = 1;
@@ -416,7 +430,7 @@ void DoA36487(void) {
     }
   }
   
-  if (PIN_RF_OK == ILL_PIN_RF_FAULT) {
+  if (PIN_CPU_RF_OK_IN == ILL_PIN_RF_FAULT) {
     _FAULT_RF_STATUS = 1;
   } else {
     if (ETMCanSlaveGetSyncMsgResetEnable()) {
@@ -491,9 +505,6 @@ void DoA36487(void) {
       // Set the rep rate to zero
       log_data_rep_rate_deci_hertz = 0;
     }
-    if (_T1IF) {
-      ResetCounter();
-    }
   
     // Update the debugging Data
     //ETMCanSlaveSetDebugRegister(0, (grid_start_high3 << 8) + grid_start_high2);
@@ -512,8 +523,148 @@ void DoA36487(void) {
     ETMCanSlaveSetDebugRegister(0xD, log_data_rep_rate_deci_hertz);
     ETMCanSlaveSetDebugRegister(0xE, 0);
     ETMCanSlaveSetDebugRegister(0xF, global_data_A36487.period_filtered);
+
+    UpdateAnalogDataFromPLC();
   }
 }
+
+
+#define ANALOG_STATE_WAIT_FOR_DATA_READ  10
+#define ANALOG_STATE_WAIT_FOR_PLC_SET    20
+#define ANALOG_STATE_WAIT_READ_COMPLETE  30
+#define ANALOG_STATE_DATA_READ_FAULT     40
+
+
+void UpdateAnalogDataFromPLC(void) {
+  global_data_A36487.analog_interface_timer++;
+  
+  if ((PIN_PACKAGE_VALID_IN == ILL_PACKAGE_VALID) && (global_data_A36487.state_analog_data_read == ANALOG_STATE_WAIT_FOR_DATA_READ)) {
+    // INITIATE Data Read
+    PIN_ANALOG_READ_COMPLETE_OUT = !OLL_ANALOG_READ_COMPLETE;
+    global_data_A36487.analog_register_select = 0;
+    global_data_A36487.analog_interface_timer = 0;
+    global_data_A36487.state_analog_data_read = ANALOG_STATE_WAIT_FOR_PLC_SET;
+    _ADON = 1;
+  }
+  
+  if ((global_data_A36487.state_analog_data_read == ANALOG_STATE_WAIT_FOR_PLC_SET) && (global_data_A36487.analog_interface_timer >= 250)) {
+    if (PIN_PACKAGE_VALID_IN != ILL_PACKAGE_VALID) {
+      global_data_A36487.state_analog_data_read = ANALOG_STATE_DATA_READ_FAULT;
+    } if (global_data_A36487.analog_register_select >= 4) {
+      global_data_A36487.state_analog_data_read = ANALOG_STATE_DATA_READ_FAULT;
+    } else {
+      ReadAnalogRegister(); 	// read the analog data
+      PIN_ANALOG_READ_COMPLETE_OUT = OLL_ANALOG_READ_COMPLETE;
+      global_data_A36487.analog_register_select++;
+      global_data_A36487.analog_interface_timer = 0;
+      global_data_A36487.state_analog_data_read = ANALOG_STATE_WAIT_READ_COMPLETE;
+    }
+  }
+  
+  if ((global_data_A36487.state_analog_data_read == ANALOG_STATE_WAIT_READ_COMPLETE) && (global_data_A36487.analog_interface_timer >= 250)) {
+    if (PIN_PACKAGE_VALID_IN == ILL_PACKAGE_VALID) {
+      global_data_A36487.state_analog_data_read = ANALOG_STATE_DATA_READ_FAULT;
+    } else {
+      if (global_data_A36487.analog_register_select >= 4) {
+	global_data_A36487.state_analog_data_read = ANALOG_STATE_WAIT_FOR_DATA_READ;
+	PIN_ANALOG_READ_COMPLETE_OUT = OLL_ANALOG_READ_COMPLETE;
+	_ADON = 0;
+      } else {
+	PIN_ANALOG_READ_COMPLETE_OUT = !OLL_ANALOG_READ_COMPLETE;
+	global_data_A36487.analog_interface_timer = 0;
+	global_data_A36487.state_analog_data_read = ANALOG_STATE_WAIT_FOR_PLC_SET;
+      }
+
+    }
+  }
+  
+  if (global_data_A36487.state_analog_data_read == ANALOG_STATE_DATA_READ_FAULT) {
+    global_data_A36487.analog_register_select = 0;
+    global_data_A36487.analog_interface_timer = 0;
+    global_data_A36487.state_analog_data_read = ANALOG_STATE_WAIT_FOR_DATA_READ;
+    PIN_ANALOG_READ_COMPLETE_OUT = OLL_ANALOG_READ_COMPLETE;
+    _ADON = 0;
+  }
+}
+
+
+
+
+
+void ReadAnalogRegister(void) {
+  /*
+    Order of analog values
+    0 = Nothing, Can Not Implement
+    1 = High Energy Grid Start 3
+    2 = High Energy Grid Start 2
+    3 = High Energy Grid Start 1
+    4 = High Energy Grid Start 0
+    5 = Low Energy Grid Start 3
+    6 = Low Energy Grid Start 2
+    7 = Low Energy Grid Start 1
+    8 = Low Energy Grid Start 0
+    9 = High Energy Grid Stop 3
+    10 = High Energy Grid Stop 2
+    11 = High Energy Grid Stop 1
+    12 = High Energy Grid Stop 0
+    13 = Low Energy Grid Stop 3
+    14 = Low Energy Grid Stop 2
+    15 = Low Energy Grid Stop 1
+    16 = Low Energy Grid Stop 0
+    17 = High Energy PFN Delay
+    18 = High Energy RF Delay
+    19 = Low Energy PFN Delay
+    20 = Low Energy RF Delay
+    19 = High Energy AFC Delay
+    20 = Not Implemented
+    21 = Low Energy AFC Delay
+    22 = Not Implemented
+  */
+
+  switch (global_data_A36487.analog_register_select) {
+  case 0:
+    grid_start_high3 = (global_data_A36487.analog_1.filtered_adc_reading >> 8);
+    grid_start_high2 = (global_data_A36487.analog_2.filtered_adc_reading >> 8);
+    grid_start_high1 = (global_data_A36487.analog_3.filtered_adc_reading >> 8);
+    grid_start_high0 = (global_data_A36487.analog_4.filtered_adc_reading >> 8);
+    grid_start_low3  = (global_data_A36487.analog_1.filtered_adc_reading >> 8);
+    grid_start_low2  = (global_data_A36487.analog_2.filtered_adc_reading >> 8);
+    grid_start_low1  = (global_data_A36487.analog_3.filtered_adc_reading >> 8);
+    grid_start_low0  = (global_data_A36487.analog_4.filtered_adc_reading >> 8);
+    break;
+
+  case 1:
+    grid_stop_high3  = (global_data_A36487.analog_1.filtered_adc_reading >> 8);
+    grid_stop_high2  = (global_data_A36487.analog_2.filtered_adc_reading >> 8);
+    grid_stop_high1  = (global_data_A36487.analog_3.filtered_adc_reading >> 8);
+    grid_stop_high0  = (global_data_A36487.analog_4.filtered_adc_reading >> 8);
+    grid_stop_low3   = (global_data_A36487.analog_1.filtered_adc_reading >> 8);
+    grid_stop_low2   = (global_data_A36487.analog_2.filtered_adc_reading >> 8);
+    grid_stop_low1   = (global_data_A36487.analog_3.filtered_adc_reading >> 8);
+    grid_stop_low0   = (global_data_A36487.analog_4.filtered_adc_reading >> 8);
+    break;
+
+  case 2:
+    pfn_delay_high          = (global_data_A36487.analog_1.filtered_adc_reading >> 8);
+    dose_sample_delay_high  = (global_data_A36487.analog_2.filtered_adc_reading >> 8);
+    pfn_delay_low           = (global_data_A36487.analog_3.filtered_adc_reading >> 8);
+    dose_sample_delay_low   = (global_data_A36487.analog_4.filtered_adc_reading >> 8);
+    afc_delay_high          = (global_data_A36487.analog_1.filtered_adc_reading >> 8);
+    magnetron_current_sample_delay_high  = (global_data_A36487.analog_2.filtered_adc_reading >> 8);
+    afc_delay_low           = (global_data_A36487.analog_3.filtered_adc_reading >> 8);
+    magnetron_current_sample_delay_low  = (global_data_A36487.analog_4.filtered_adc_reading >> 8);
+    break;
+
+  case 3:
+    // Unused at this time
+    break;
+
+  default:
+    // Error : do not update anything
+    break;
+  }
+}
+
 
 
 void DoStartupLEDs(void) {
@@ -563,7 +714,6 @@ void DoPostTriggerProcess(void) {
   }
     
   // This is used to detect if the trigger is high (which would cause constant pulses to the system)
-  PIN_PIC_PRF_OK = OLL_PIC_PRF_INHIBIT;
 }
 
 
@@ -702,13 +852,6 @@ unsigned char InterpolateValue(unsigned int val_0, unsigned int val_1, unsigned 
 }
 
 
-void ResetCounter(void) {
-  PIN_PW_CLR_CNT_OUT = OLL_PW_CLR_CNT;
-  __delay32(100);
-  PIN_PW_CLR_CNT_OUT = !OLL_PW_CLR_CNT;
-}
-
-
 void __attribute__((interrupt(__save__(CORCON,SR)), no_auto_psv)) _U2RXInterrupt(void) {
   unsigned int crc_check;
   unsigned char data;
@@ -788,52 +931,122 @@ unsigned char ReverseBits(unsigned char byte_to_reverse) {
   return output;
 }
 
-#define MIN_PERIOD 150 // 960uS 1041 Hz// 
-void __attribute__((interrupt(__save__(CORCON,SR)), no_auto_psv)) _INT3Interrupt(void) {
-  // A trigger was recieved.
-  // THIS DOES NOT MEAN THAT A PULSE WAS GENERATED
-  // If (PIN_CPU_XRAY_ENABLE_OUT == OLL_CPU_XRAY_ENABLE)  && (PIN_CUSTOMER_XRAY_ON_IN == ILL_CUSTOMER_BEAM_ENABLE) then we "Probably" generated a pulse
-  if ((TMR1 > MIN_PERIOD) || _T1IF) {
-    // Calculate the Trigger PRF
-    // TMR1 is used to time the time between INT3 interrupts
-    global_data_A36487.last_period = TMR1;
-    TMR1 = 0;
-    // Start The Holdoff Timer for the next pulse
-    TMR3 = 0;
-    PR3 = TMR3_DELAY_2400US;
-    _T3IF = 0;
-    _T3IE = 1;
-    if (_T1IF) {
-      // The timer exceed it's period of 400mS - (Will happen if the PRF is less than 2.5Hz)
-      global_data_A36487.last_period = 62501;  // This will indicate that the PRF is Less than 2.5Hz
-    }
-    _T1IF = 0;
-    
-    global_data_A36487.trigger_complete = 1;
-    global_data_A36487.this_pulse_level_energy_command = global_data_A36487.next_pulse_level_energy_command;
-    uart2_next_byte = 0;
+
+
+	unsigned char Analog[33];
+
+
+
+unsigned int UpdateDataOverAnalog(void) {
+  /*
+    Procedure for updating values
+    (1) The PLC sets the ANALOG_PACKAGE_VALID Pin
+    (2) The PIC sets the READY_FOR_ANALOG Pin
+    (3) The PIC waits 250ms
+    (4) The PIC checks that the ANALOG_PACKAGE_VALID Pin is high
+        If it is not high, A communication error is created
+    (5) The PIC reads the analog data for register group 0
+    (6) The PIC clears the READ_FOR_ANALOG Pin
+    (7) The PIC waits 250ms
+    (8) The Pic checks that the ANALOG_PACKAGE_VALUD Pin is low
+        If it is not low,  A communication error is created
+    (9) Repeate Steps 2->8, for register group 1,2,3
+  */
+
+  
+
+  if (PIN_PACKAGE_VALID_IN == !ILL_PACKAGE_VALID) {
+    return 1;
   }
-  _INT3IF = 0;		// Clear Interrupt flag
-}  
+
+  PIN_ANALOG_READ_COMPLETE_OUT = !OLL_ANALOG_READ_COMPLETE;
+  __delay32(DELAY_PLC);  // Wait 250mS
+  if (PIN_PACKAGE_VALID_IN == ILL_PACKAGE_VALID) {
+    return 1;
+  } 
+
+  // Read the first set on analog values
+  
+  PIN_ANALOG_READ_COMPLETE_OUT = OLL_ANALOG_READ_COMPLETE;
+  __delay32(DELAY_PLC);  // Wait 250mS
+  if (PIN_PACKAGE_VALID_IN == !ILL_PACKAGE_VALID) {
+    return 1;
+  }
+  
+  global_data_A36487.counter_config_received = 0b1111;
+  
+  return 0;
+}
+
+
+#ifndef __INTERNAL_TRIGGER
+// External Trigger
+
+
+void __attribute__((interrupt, no_auto_psv)) _INT1Interrupt(void) {
+  // A trigger was recieved
+  
+  // First check that the pulse is valid
+  // It takes at least 4 clock cycles to get here
+  // IF the trigger is valid and we are in the x-ray state, send out the start pulse
+  if (PIN_TRIGGER_IN == ILL_TRIGGER_ACTIVE) {
+    if ((global_data_A36487.control_state == STATE_X_RAY_ENABLE) && (global_data_A36487.prf_ok)) {
+      PIN_CPU_START_OUT = OLL_CPU_START;
+      __delay32(60);  // Delay 6 uS
+    }
+    global_data_A36487.prf_ok = 0;
+    if ((TMR1 > MIN_PERIOD) || _T1IF) {
+      // Calculate the Trigger PRF
+      // TMR1 is used to time the time between INT3 interrupts
+      global_data_A36487.last_period = TMR1;
+      TMR1 = 0;
+      // Start The Holdoff Timer for the next pulse
+      TMR3 = 0;
+      PR3 = TMR3_DELAY_2400US;
+      _T3IF = 0;
+      _T3IE = 1;
+      if (_T1IF) {
+	// The timer exceed it's period of 400mS - (Will happen if the PRF is less than 2.5Hz)
+	global_data_A36487.last_period = 62501;  // This will indicate that the PRF is Less than 2.5Hz
+      }
+      _T1IF = 0;
+      global_data_A36487.trigger_complete = 1;
+      global_data_A36487.this_pulse_level_energy_command = global_data_A36487.next_pulse_level_energy_command;
+      uart2_next_byte = 0;
+    }
+  }
+  PIN_CPU_START_OUT = !OLL_CPU_START;
+  _INT1IF = 0;
+  _INT1IE = 0;
+}
+
 
 void __attribute__((interrupt, no_auto_psv)) _T3Interrupt(void) {
   /*
-    We Can't enable XRays when if 40uS Line is high or we could get an error in pulse timing
-    If 40us line is high reset the timer to check again in 200uS
+    // Enable trigger pulses to be generated
   */
+  global_data_A36487.prf_ok = 1;
 
-  if (PIN_40US_PULSE == ILL_PIN_40US_PULSE_ACTIVE) {
-    // Renable this interrupt for 200us from now
-    PR3 = TMR3_DELAY_200US;
-    TMR3 = 0;
-    _T3IF = 0;
-    _T3IE = 1;
-  } else {
-    PIN_PIC_PRF_OK = !OLL_PIC_PRF_INHIBIT;
-    _T3IF = 0;
-    _T3IE = 0;
-  }
+  _T3IF = 0;
+  _T3IE = 0;
 }
+
+#else
+// Trigger is generated internally
+
+void __attribute__((interrupt, no_auto_psv)) _T3Interrupt(void) {
+
+  if ((global_data_A36487.control_state == STATE_X_RAY_ENABLE)) {
+    PIN_CPU_START_OUT == OLL_CPU_START;
+    __delay32(60);  // Delay 6 uS
+  }
+  
+  PIN_CPU_START_OUT == !OLL_CPU_START;
+  _T3IF = 0;
+}
+
+#endif
+
 
 
 void __attribute__((interrupt, no_auto_psv)) _DefaultInterrupt(void) {
@@ -845,6 +1058,7 @@ void __attribute__((interrupt, no_auto_psv)) _DefaultInterrupt(void) {
 
 // Executes the CAN Commands
 void ETMCanSlaveExecuteCMDBoardSpecific(ETMCanMessage* message_ptr) {
+#ifndef __ANALOG_DATA_INTERFACE
   unsigned int index_word;
   //unsigned int temp;
   index_word = message_ptr->word3;
@@ -890,8 +1104,161 @@ void ETMCanSlaveExecuteCMDBoardSpecific(ETMCanMessage* message_ptr) {
       ETMCanSlaveIncrementInvalidIndex();
       break;
     }
+#endif
+}
+
+void __attribute__((interrupt, no_auto_psv)) _ADCInterrupt(void) {
+  _ADIF = 0;
+
+  // Copy Data From Buffer to RAM
+  if (_BUFS) {
+    // read ADCBUF 0-7
+    global_data_A36487.analog_1.adc_accumulator += ADCBUF0;
+    global_data_A36487.analog_2.adc_accumulator += ADCBUF1;
+    global_data_A36487.analog_3.adc_accumulator += ADCBUF2;
+    global_data_A36487.analog_4.adc_accumulator += ADCBUF3;
+    global_data_A36487.analog_5.adc_accumulator += ADCBUF4;
+    global_data_A36487.analog_6.adc_accumulator += ADCBUF5;
+    global_data_A36487.analog_7.adc_accumulator += ADCBUF6;
+    global_data_A36487.analog_8.adc_accumulator += ADCBUF7;
+  } else {
+    // read ADCBUF 8-15
+    global_data_A36487.analog_1.adc_accumulator += ADCBUF8;
+    global_data_A36487.analog_2.adc_accumulator += ADCBUF9;
+    global_data_A36487.analog_3.adc_accumulator += ADCBUFA;
+    global_data_A36487.analog_4.adc_accumulator += ADCBUFB;
+    global_data_A36487.analog_5.adc_accumulator += ADCBUFC;
+    global_data_A36487.analog_6.adc_accumulator += ADCBUFD;
+    global_data_A36487.analog_7.adc_accumulator += ADCBUFE;
+    global_data_A36487.analog_8.adc_accumulator += ADCBUFF;
+  }
+  
+  global_data_A36487.accumulator_counter++ ;
+  
+  if (global_data_A36487.accumulator_counter >= 128) {
+
+    // convert accumulators to 16 bit integer
+    global_data_A36487.analog_1.adc_accumulator >>= 3;
+    global_data_A36487.analog_2.adc_accumulator >>= 3;
+    global_data_A36487.analog_3.adc_accumulator >>= 3;
+    global_data_A36487.analog_4.adc_accumulator >>= 3;
+    global_data_A36487.analog_5.adc_accumulator >>= 3;
+    global_data_A36487.analog_6.adc_accumulator >>= 3;
+    global_data_A36487.analog_7.adc_accumulator >>= 3;
+    global_data_A36487.analog_8.adc_accumulator >>= 3;
+
+    // Store the values
+    global_data_A36487.analog_1.filtered_adc_reading = global_data_A36487.analog_1.adc_accumulator;
+    global_data_A36487.analog_2.filtered_adc_reading = global_data_A36487.analog_2.adc_accumulator;
+    global_data_A36487.analog_3.filtered_adc_reading = global_data_A36487.analog_3.adc_accumulator;
+    global_data_A36487.analog_4.filtered_adc_reading = global_data_A36487.analog_4.adc_accumulator;
+    global_data_A36487.analog_5.filtered_adc_reading = global_data_A36487.analog_5.adc_accumulator;
+    global_data_A36487.analog_6.filtered_adc_reading = global_data_A36487.analog_6.adc_accumulator;
+    global_data_A36487.analog_7.filtered_adc_reading = global_data_A36487.analog_7.adc_accumulator;
+    global_data_A36487.analog_8.filtered_adc_reading = global_data_A36487.analog_8.adc_accumulator;
+
+    // Clear the accumlators
+    global_data_A36487.analog_1.adc_accumulator = 0;
+    global_data_A36487.analog_2.adc_accumulator = 0;
+    global_data_A36487.analog_3.adc_accumulator = 0;
+    global_data_A36487.analog_4.adc_accumulator = 0;
+    global_data_A36487.analog_5.adc_accumulator = 0;
+    global_data_A36487.analog_6.adc_accumulator = 0;
+    global_data_A36487.analog_7.adc_accumulator = 0;
+    global_data_A36487.analog_8.adc_accumulator = 0;
+
+    global_data_A36487.accumulator_counter = 0;
+  }
 }
 
 
 
 
+// DPARKER - THIS STILL NEEDS A LOT OF WORK
+int SendPersonalityToPLC(unsigned char id) {
+  //The PIC will use the gun driver,PFN, and RF faults to the PLC
+  //as outputs momentarily to tell the PLC which personality
+  //module is installed
+  
+  int ret = 0;
+  /*
+    DPARKER REWORK THE TRIS HERE
+  TRIS_PIN_CPU_RF_OK_IN = TRIS_OUTPUT_MODE;
+  TRIS_PIN_CPU_GUNDRIVER_OK_IN = TRIS_OUTPUT_MODE;
+  TRIS_PIN_CPU_PFN_OK_IN = TRIS_OUTPUT_MODE;
+  */
+  
+  if (id == HIGH_DOSE) {
+    PIN_CPU_PFN_OK_IN = 0;
+    PIN_CPU_GUNDRIVER_OK_IN = 0;
+    PIN_CPU_RF_OK_IN = 0;
+  } else if (id == MEDIUM_DOSE) {
+    PIN_CPU_PFN_OK_IN = 1;
+    PIN_CPU_GUNDRIVER_OK_IN = 1;
+    PIN_CPU_RF_OK_IN = 0;
+  } else if (id == LOW_DOSE) {
+    PIN_CPU_PFN_OK_IN = 1;
+    PIN_CPU_GUNDRIVER_OK_IN = 0;
+    PIN_CPU_RF_OK_IN = 1;
+  } else if (id == ULTRA_LOW_DOSE) {
+    PIN_CPU_PFN_OK_IN = 0;
+    PIN_CPU_GUNDRIVER_OK_IN = 1;
+    PIN_CPU_RF_OK_IN = 1;
+  } else {
+    PIN_CPU_PFN_OK_IN = 1;
+    PIN_CPU_GUNDRIVER_OK_IN = 1;
+    PIN_CPU_RF_OK_IN = 1;
+  }
+
+  PIN_ANALOG_READ_COMPLETE_OUT = !OLL_ANALOG_READ_COMPLETE;   //PLCin = 1
+  __delay32(DELAY_PLC); // 250ms for 10M TCY
+  if (PIN_PACKAGE_VALID_IN == !ILL_PACKAGE_VALID) {
+    ret = 1;       //Failure to Communicate
+  }
+  PIN_ANALOG_READ_COMPLETE_OUT = OLL_ANALOG_READ_COMPLETE;    //PLCin = 0
+  __delay32(DELAY_PLC); // 250ms for 10M TCY
+  if (PIN_PACKAGE_VALID_IN == ILL_PACKAGE_VALID) {
+      ret = 1;       //Failure to Communicate
+  }
+  
+  if (id == HIGH_DOSE) {
+    PIN_CPU_PFN_OK_IN = 1;
+    PIN_CPU_GUNDRIVER_OK_IN = 1;
+    PIN_CPU_RF_OK_IN = 1;
+  } else if (id == MEDIUM_DOSE) {
+    PIN_CPU_PFN_OK_IN = 0;
+    PIN_CPU_GUNDRIVER_OK_IN = 0;
+    PIN_CPU_RF_OK_IN = 1;
+  } else if (id == LOW_DOSE) {
+    PIN_CPU_PFN_OK_IN = 0;
+    PIN_CPU_GUNDRIVER_OK_IN = 1;
+    PIN_CPU_RF_OK_IN = 0;
+  } else if (id == ULTRA_LOW_DOSE) {
+    PIN_CPU_PFN_OK_IN = 1;
+    PIN_CPU_GUNDRIVER_OK_IN = 0;
+    PIN_CPU_RF_OK_IN = 0;
+  } else {
+    PIN_CPU_PFN_OK_IN = 1;
+    PIN_CPU_GUNDRIVER_OK_IN = 1;
+    PIN_CPU_RF_OK_IN = 1;
+  }
+  
+  PIN_ANALOG_READ_COMPLETE_OUT = !OLL_ANALOG_READ_COMPLETE;   //PLCin = 1
+  __delay32(DELAY_PLC); // 250ms for 10M TCY
+  if (PIN_PACKAGE_VALID_IN == !ILL_PACKAGE_VALID) {
+    ret = 1;       //Failure to Communicate
+  }
+  PIN_ANALOG_READ_COMPLETE_OUT = OLL_ANALOG_READ_COMPLETE;    //PLCin = 0
+  __delay32(DELAY_PLC); // 250ms for 10M TCY
+  if (PIN_PACKAGE_VALID_IN == ILL_PACKAGE_VALID) {
+    ret = 1;       //Failure to Communicate
+  }
+
+/*
+    DPARKER REWORK THE TRIS HERE
+  TRIS_PIN_CPU_RF_OK_IN = TRIS_INPUT_MODE;
+  TRIS_PIN_CPU_GUNDRIVER_OK_IN = TRIS_INPUT_MODE;
+  TRIS_PIN_CPU_PFN_OK_IN = TRIS_INPUT_MODE;
+*/
+  return ret;       //Communication Successful = 0
+}

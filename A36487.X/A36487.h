@@ -11,6 +11,13 @@
 #include "P1395_CAN_SLAVE.h"
 #include "FIRMWARE_VERSION.h"
 
+#define __PLC_INTERFACE
+#define __ANALOG_DATA_INTERFACE
+//#define __COMPILE_MODE_2_5
+
+#define DELAY_PLC   2500000  // 2.5 million cycles
+#define MIN_PERIOD  1
+
 
 /*
   Hardware Module Resource Usage
@@ -27,6 +34,8 @@
   Timer1 - Used to measure PRF and 
   Timer2 - Used for 10ms Timing
   Timer3 - Used to Limit the PRF
+
+  Timer4/5 - Reserved for the CAN module
 
   INT3 - Used for Pulse Trigger ISR
 
@@ -57,6 +66,22 @@ typedef struct{
   
   TYPE_DIGITAL_INPUT pfn_fan_fault;
   
+  AnalogInput  analog_1;
+  AnalogInput  analog_2;
+  AnalogInput  analog_3;
+  AnalogInput  analog_4;
+  AnalogInput  analog_5;
+  AnalogInput  analog_6;
+  AnalogInput  analog_7;
+  AnalogInput  analog_8;
+
+
+  unsigned int analog_interface_timer;
+  unsigned int state_analog_data_read;
+  unsigned int analog_register_select;
+  unsigned int prf_ok;
+  unsigned int accumulator_counter;
+
 } TYPE_GLOBAL_DATA_A36487;
 
 
@@ -136,39 +161,41 @@ typedef struct{
 
 
 
-// DIGITAL INPUT PINS
-#define PIN_CUSTOMER_BEAM_ENABLE_IN         _RG2
-#define ILL_CUSTOMER_BEAM_ENABLE            1
 
-#define PIN_CUSTOMER_XRAY_ON_IN             _RG3
-#define ILL_CUSTOMER_XRAY_ON                1
+//  ----------  ADC CONFIGURATION --------------
 
-
-
-// DIGITAL OUTPUT PINS
-#define PIN_CPU_HV_ENABLE_OUT               _LATD8
-#define OLL_CPU_HV_ENABLE                   1
-
-#define PIN_CPU_XRAY_ENABLE_OUT             _LATC13
-#define OLL_CPU_XRAY_ENABLE                 1
-
-#define PIN_CPU_WARNING_LAMP_OUT            _LATD9
-#define OLL_CPU_WARNING_LAMP                1
-
-#define PIN_PIC_PRF_OK                      _LATD6
-#define OLL_PIC_PRF_INHIBIT                 0
-
+#ifdef __ANALOG_INTERFACE
 
 
 /*
-  ----------  ADC CONFIGURATION --------------
+  This sets up the ADC to work as following
+  AUTO Sampeling
+  External Vref+/Vref-
+  With 10MHz System Clock, ADC Clock is 450ns (4.5 clocks per ADC clock), Sample Time is 10 ADC Clock
+  Total Conversion time is 24 TAD = 10.8uS
+  8 Samples per Interrupt, use alternating buffers
+  Scan Through Selected Inputs
+  
+  We can convert all 8 samples in 86.4uS
+*/
+
+#define ADCON1_SETTING  (ADC_MODULE_OFF & ADC_IDLE_STOP & ADC_FORMAT_INTG & ADC_CLK_AUTO & ADC_AUTO_SAMPLING_ON)
+#define ADCON2_SETTING  (ADC_VREF_EXT_EXT & ADC_SCAN_ON & ADC_SAMPLES_PER_INT_8 & ADC_ALT_BUF_ON & ADC_ALT_INPUT_OFF)
+#define ADCHS_SETTING   (ADC_CH0_POS_SAMPLEA_AN7 & ADC_CH0_NEG_SAMPLEA_VREFN & ADC_CH0_POS_SAMPLEB_AN7 & ADC_CH0_NEG_SAMPLEB_VREFN)
+#define ADPCFG_SETTING  (ENABLE_AN8_ANA & ENABLE_AN9_ANA & ENABLE_AN10_ANA & ENABLE_AN11_ANA & ENABLE_AN12_ANA & ENABLE_AN13_ANA & ENABLE_AN14_ANA & ENABLE_AN15_ANA)
+#define ADCSSL_SETTING  (SKIP_SCAN_AN0 & SKIP_SCAN_AN1 & SKIP_SCAN_AN2 & SKIP_SCAN_AN3 & SKIP_SCAN_AN4 & SKIP_SCAN_AN5 & SKIP_SCAN_AN6 & SKIP_SCAN_AN7)
+#define ADCON3_SETTING  (ADC_SAMPLE_TIME_4 & ADC_CONV_CLK_SYSTEM & ADC_CONV_CLK_9Tcy2)
+
+#else
+/*
   ADC is not used
   Disable the ADC and set all pins to digital Inputs
 */
-  
+
 #define ADCON1_SETTING  (ADC_MODULE_OFF & ADC_IDLE_STOP & ADC_FORMAT_INTG & ADC_CLK_AUTO & ADC_AUTO_SAMPLING_ON)
 #define ADPCFG_SETTING  0xFFFF // All pins are digital Inputs
 
+#endif
 
 
 
@@ -201,9 +228,172 @@ typedef struct{
 #define TMR3_DELAY_200US                2000
 
 
-// ***Digital Pin Definitions***
 
-// DPARKER - CLEAN UP PIN DEFFENITIONS and INITIALIZAITONS
+/* 
+   // DPARKER change ID -> PERSONALITY to make more clear
+
+   
+   ---------- Output Pins --------------
+   C2 -  PIN_ID_SHIFT_OUT
+   C3 -  PIN_ID_CLK_OUT
+   C14 - PIN_ENERGY_CPU_OUT
+   D1  - PIN_RF_POLARITY_OUT
+   D2  - PIN_HVPS_POLARITY_OUT
+   D3  - PIN_GUN_POLARITY_OUT
+   D4  - PIN_CPU_START_OUT
+   D7  - PIN_AFC_TRIGGER_ENABLE_OUT
+   D9  - PIN_CPU_WARNING_LAMP_OUT
+   D11 - PIN_LD_DELAY_GUN_OUT
+   D12 - PIN_LD_DELAY_PFN_OUT
+   D13 - PIN_LD_DELAY_AFC_OUT
+   D15 - PIN_ANALOG_READ_COMPLETE_OUT 
+   F2  - PIN_PORTAL_GANTRY_MODE_OUT
+
+
+
+   -------- INPUT PINS ------------
+   A6  - PIN_CPU_GUNDRIVER_OK_IN
+   A7  - PIN_CPU_RF_OK_IN
+   A12 - PIN_TRIGGER_IN
+   B2  - PIN_HIGH_MODE_IN
+   B3  - PIN_LOW_MODE_IN
+   C4  - PIN_ID_DATA_IN
+   C13 - PIN_CPU_XRAY_ENABLE_IN
+   D8  - PIN_CPU_HV_ENABLE_IN
+   D14 - PIN_XRAY_CMD_MISMATCH_IN
+   F6  - PIN_PACKAGE_VALID_IN
+   F7  - PIN_KEY_LOCK_IN
+   F8  - PIN_PANEL_IN
+   G0  - PIN_CPU_PFN_OK_IN
+   G2  - PIN_CUSTOMER_BEAM_ENABLE_IN
+   G3  - PIN_CUSTOMER_XRAY_ON_IN
+
+   // DPARKER - MORE POSSIBLE FAULT INPUTS - POSSIBLY NOT USED
+
+
+
+
+*/
+#define PIN_ID_SHIFT_OUT                  _LATC2
+#define PIN_ID_CLK_OUT                    _LATC3
+#define PIN_ENERGY_CPU_OUT                _LATC14
+#define PIN_RF_POLARITY_OUT               _LATD1
+#define PIN_HVPS_POLARITY_OUT             _LATD2
+#define PIN_GUN_POLARITY_OUT              _LATD3
+#define PIN_CPU_START_OUT                 _LATD4
+#define PIN_AFC_TRIGGER_ENABLE_OUT        _LATD7
+#define PIN_CPU_WARNING_LAMP_OUT          _LATD9
+#define PIN_LD_DELAY_GUN_OUT              _LATD11
+#define PIN_LD_DELAY_PFN_OUT              _LATD12
+#define PIN_LD_DELAY_AFC_OUT              _LATD13
+#define PIN_ANALOG_READ_COMPLETE_OUT      _LATD15
+#define PIN_PORTAL_GANTRY_MODE_OUT        _LATF2
+
+
+#define OLL_CPU_WARNING_LAMP                1
+#define OLL_ANALOG_READ_COMPLETE            1
+#define OLL_CPU_START                       1
+
+#define PIN_CPU_GUNDRIVER_OK_IN           _RA6
+#define PIN_CPU_RF_OK_IN                  _RA7
+#define PIN_TRIGGER_IN                    _RA12
+#define PIN_HIGH_MODE_IN                  _RB2
+#define PIN_LOW_MODE_IN                   _RB3
+#define PIN_ID_DATA_IN                    _RC4
+#define PIN_CPU_XRAY_ENABLE_IN            _RC13
+#define PIN_CPU_HV_ENABLE_IN              _RD8
+#define PIN_XRAY_CMD_MISMATCH_IN          _RD14
+#define PIN_PACKAGE_VALID_IN              _RF6
+#define PIN_KEY_LOCK_IN                   _RF7   // Only looked at by CAN code
+#define PIN_PANEL_IN                      _RF8   // Only looked at by CAN code
+#define PIN_CPU_PFN_OK_IN                 _RG0
+#define PIN_CUSTOMER_BEAM_ENABLE_IN       _RG2
+#define PIN_CUSTOMER_XRAY_ON_IN           _RG3
+
+
+#define ILL_PLC_ENABLE_HV                 1
+#define ILL_PLC_READY                     1
+#define ILL_CUSTOMER_BEAM_ENABLE          1
+#define ILL_MODE_BIT_SELECTED             1
+#define ILL_PANEL_OPEN                    1
+#define ILL_KEY_LOCK_FAULT                1
+#define ILL_PIN_RF_FAULT                  1
+#define ILL_PIN_PFN_FAULT                 1
+#define ILL_XRAY_CMD_MISMATCH             1
+
+#define ILL_PACKAGE_VALID                 1
+#define ILL_TRIGGER_ACTIVE                1
+
+
+
+//-------- MUST BE OUTPUTS IN CAN MODE AND INPUTS IN PLC MODE ----------------- //
+#define PIN_CPU_READY_OUT                   _LATB4
+#define PIN_CPU_STANDBY_OUT                 _LATB5
+#define PIN_CPU_XRAY_ENABLE_OUT             _LATC13
+#define PIN_CPU_SUMFLT_OUT                  _LATD0
+#define PIN_CPU_HV_ENABLE_OUT               _LATD8
+#define PIN_CPU_WARMUP_OUT                  _LATD10
+
+#define OLL_CPU_READY                       1
+#define OLL_CPU_STANDBY                     1
+#define OLL_CPU_XRAY_ENABLE                 1
+#define OLL_CPU_SUMFLT                      1
+#define OLL_CPU_HV_ENABLE                   1
+#define OLL_CPU_WARMUP                      1
+
+
+
+
+
+
+
+#ifdef __PLC_INTERFACE
+
+#define A36487_TRISA_VALUE 0b1111111111111111
+#define A36487_TRISB_VALUE 0b1111111111111111
+#define A36487_TRISC_VALUE 0b1011111111110011
+#define A36487_TRISD_VALUE 0b0100010101100001
+#define A36487_TRISF_VALUE 0b1111111111111011
+#define A36487_TRISG_VALUE 0b0101111111111111
+
+#else
+
+#define A36487_TRISA_VALUE 0b1111111111111111
+#define A36487_TRISB_VALUE 0b1111111111001111
+#define A36487_TRISC_VALUE 0b1001111111110011
+#define A36487_TRISD_VALUE 0b0100000001100000
+#define A36487_TRISF_VALUE 0b1111111111111011
+#define A36487_TRISG_VALUE 0b0101111111111111
+
+#endif
+
+
+
+
+
+#ifdef __PLC_INTERFACE
+
+#define _MACRO_HV_ENABLE         (PIN_CPU_HV_ENABLE_IN == ILL_PLC_ENABLE_HV)
+#define _MACRO_NOT_HV_ENABLE     (PIN_CPU_HV_ENABLE_IN == !ILL_PLC_ENABLE_HV)
+
+#define _MACRO_XRAY_ENABLE       (PIN_CPU_XRAY_ENABLE_IN == ILL_PLC_READY)
+#define _MACRO_NOT_XRAY_ENABLE   (PIN_CPU_XRAY_ENABLE_IN == ILL_PLC_READY)
+
+#else
+
+#define _MACRO_HV_ENABLE         (ETMCanSlaveGetSyncMsgPulseSyncDisableHV() == 0)
+#define _MACRO_NOT_HV_ENABLE     (ETMCanSlaveGetSyncMsgPulseSyncDisableHV())
+
+
+#define _MACRO_XRAY_ENABLE       (ETMCanSlaveGetSyncMsgPulseSyncDisableXray() == 0)
+#define _MACRO_NOT_XRAY_ENABLE   (ETMCanSlaveGetSyncMsgPulseSyncDisableXray())
+
+#endif
+
+
+
+
+
 
 
 // Customer Interface
@@ -235,12 +425,7 @@ typedef struct{
 
 */
  
-#define A36487_TRISA_VALUE 0b1111111111111111
-#define A36487_TRISB_VALUE 0b1111111111001111
-#define A36487_TRISC_VALUE 0b1101111111110011
-#define A36487_TRISD_VALUE 0b1100001010011110
-#define A36487_TRISF_VALUE 0b1111111111111111
-#define A36487_TRISG_VALUE 0b0101111111111111
+
 
 
 
@@ -252,73 +437,6 @@ typedef struct{
 #define PIN_LED_XRAY_ON                     _LATG15
 #define PIN_LED_READY                       _LATG13
 #define OLL_LED_ON                          0
-
-
-
-// ------------ Personality Module Interface --------------- //
-#define PIN_ID_SHIFT_OUT                    _LATC2
-//#define OLL_ID_SHIFT                        1
-
-#define PIN_ID_CLK_OUT                      _LATC3
-  //#define OLL_ID_CLK                          1
-
-#define PIN_ID_DATA_IN                      _RC4
-  //#define ILL_ID_DATA                         1
-
-
-
-// ----------------- CUSTOMER IO OUTPUTS ---------------  //
-#define PIN_CPU_STANDBY_OUT                 _LATB5
-#define OLL_CPU_STANDBY                     0
-
-#define PIN_CPU_READY_OUT                   _LATB4
-#define OLL_CPU_READY                       0
-
-#define PIN_CPU_WARMUP_OUT                  _LATD10
-#define OLL_CPU_WARMUP                      0
-
-#define PIN_CPU_SUMFLT_OUT                  _LATD0
-#define OLL_CPU_SUMFLT                      0
-
-
-// ----------------- CUSTOMER IO INPUTS ---------------  //
-#define PIN_LOW_MODE_IN                     _RB3
-#define PIN_HIGH_MODE_IN                    _RB2
-#define ILL_MODE_BIT_SELECTED               0 
-
-
-
-
-// ------------ SYSTEM IO INPUTS ------------------ //
-#define PIN_KEY_LOCK_IN                     _RF7
-#define ILL_KEY_LOCK_FAULT                  1
-
-#define PIN_PANEL_IN                        _RF8
-#define ILL_PANEL_OPEN                      1
-
-#define PIN_RF_OK                           _RA7
-#define ILL_PIN_RF_FAULT                    0
-
-#define PIN_PFN_OK                          _RG0
-#define ILL_PIN_PFN_FAULT                   0
-
-#define PIN_XRAY_CMD_MISMATCH_IN            _RD14
-#define ILL_XRAY_CMD_MISMATCH               1
-
-#define PIN_40US_PULSE                      _RA15
-#define ILL_PIN_40US_PULSE_ACTIVE           1
-
-// ------------ LOAD SHIFT REGISTER OUTPUTS ------------------ //
-#define PIN_LD_DELAY_GUN_OUT		    _LATD11
-#define PIN_LD_DELAY_AFC_OUT		    _LATD13
-#define PIN_LD_DELAY_PFN_OUT		    _LATD12
-
-
-// ------------------ TRIGGER WIDTH INTERFACE --------------- //
-// DPARKER - This will not be needed with new hardware
-#define PIN_PW_CLR_CNT_OUT                  _LATD5
-#define OLL_PW_CLR_CNT                      1
-
 
 
 
