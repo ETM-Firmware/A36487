@@ -61,8 +61,7 @@ typedef struct{
   unsigned int trigger_complete;         // This bit is set when the trigger ISR occurs
   unsigned int led_state;                // DPARKER - HOW IS THIS USED???? As far as I can tell it isn't        
   unsigned char personality;             // DPARKER - This is not working at the moment //0=UL, 1=L, 2=M, 3=H
-  unsigned int  next_pulse_level_energy_command;  // This stores the next pulse level command, it is loaded into this_pulse_level_energy_command after a trigger
-  unsigned int  this_pulse_level_energy_command;
+
   
   TYPE_DIGITAL_INPUT pfn_fan_fault;
   
@@ -81,6 +80,17 @@ typedef struct{
   unsigned int analog_register_select;
   unsigned int prf_ok;
   unsigned int accumulator_counter;
+
+  unsigned int this_pulse_level;
+  unsigned int this_pulse_width;
+
+  unsigned int next_pulse_level;
+  unsigned int next_pulse_width;
+
+  unsigned int message_received;
+
+  unsigned int bad_message_count;
+  unsigned int total_missed_messages;
 
 } TYPE_GLOBAL_DATA_A36487;
 
@@ -311,16 +321,21 @@ typedef struct{
 #define PIN_CUSTOMER_XRAY_ON_IN           _RG3
 
 
-#define ILL_PLC_ENABLE_HV                 1
-#define ILL_PLC_READY                     1
+
 #define ILL_CUSTOMER_BEAM_ENABLE          1
-#define ILL_MODE_BIT_SELECTED             1
-#define ILL_PANEL_OPEN                    1
+#define ILL_CUSTOMER_XRAY_ON              1
+#define ILL_MODE_BIT_SELECTED             0
 #define ILL_KEY_LOCK_FAULT                1
-#define ILL_PIN_RF_FAULT                  1
-#define ILL_PIN_PFN_FAULT                 1
+#define ILL_PANEL_OPEN                    1
+#define ILL_PIN_RF_FAULT                  0
+#define ILL_PIN_PFN_FAULT                 0
+#define ILL_PIN_GUN_FAULT                 0
 #define ILL_XRAY_CMD_MISMATCH             1
 
+
+
+#define ILL_PLC_ENABLE_HV                 1
+#define ILL_PLC_READY                     1
 #define ILL_PACKAGE_VALID                 1
 #define ILL_TRIGGER_ACTIVE                1
 
@@ -376,8 +391,8 @@ typedef struct{
 #define _MACRO_HV_ENABLE         (PIN_CPU_HV_ENABLE_IN == ILL_PLC_ENABLE_HV)
 #define _MACRO_NOT_HV_ENABLE     (PIN_CPU_HV_ENABLE_IN == !ILL_PLC_ENABLE_HV)
 
-#define _MACRO_XRAY_ENABLE       (PIN_CPU_XRAY_ENABLE_IN == ILL_PLC_READY)
-#define _MACRO_NOT_XRAY_ENABLE   (PIN_CPU_XRAY_ENABLE_IN == ILL_PLC_READY)
+#define _MACRO_XRAY_ENABLE       ((PIN_CPU_XRAY_ENABLE_IN == ILL_PLC_READY) && ((PIN_LOW_MODE_IN == ILL_MODE_BIT_SELECTED) || (PIN_HIGH_MODE_IN == ILL_MODE_BIT_SELECTED)))
+#define _MACRO_NOT_XRAY_ENABLE   ((PIN_CPU_XRAY_ENABLE_IN == !ILL_PLC_READY) || ((PIN_LOW_MODE_IN == !ILL_MODE_BIT_SELECTED) && (PIN_HIGH_MODE_IN == !ILL_MODE_BIT_SELECTED)))
 
 #else
 
@@ -445,6 +460,15 @@ typedef struct{
 #define MEDIUM_DOSE             0xCC
 #define LOW_DOSE                0xAA
 #define ULTRA_LOW_DOSE          0x99
+
+
+
+
+#ifdef __PLC_INTERFACE
+  // FORCE RESET TO BE ACTIVE
+#define ETMCanSlaveGetSyncMsgResetEnable() (1)
+  // DPARKER need to confirm that this works
+#endif  
 
 
 

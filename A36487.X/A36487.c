@@ -6,13 +6,14 @@
 
 void UpdateAnalogDataFromPLC(void);
 void ReadAnalogRegister(void);
-
+int SendPersonalityToPLC(unsigned char id);
 
 
 unsigned char ReverseBits(unsigned char byte_to_reverse);
 
 #define DOSE_COMMAND_LOW_ENERGY   0  
 #define DOSE_COMMAND_HIGH_ENERGY  1
+#define DOSE_COMMAND_CAB_SCAN     2
 // DPARKER - Move these to the CAN Module - All boards need to know if the energy is commanded high or low
 // They need to be incorporated into the can_slave modules
 
@@ -145,29 +146,12 @@ void DoStateMachine(void) {
     while (global_data_A36487.control_state == STATE_X_RAY_ENABLE) {
       DoA36487();
 
-#ifdef __COMPILE_MODE_2_5
-      // For the 2.5 Do Not Pulse in both Mode bits are in the same state
-      if (PIN_LOW_MODE_IN == PIN_HIGH_MODE_IN) {
-	PIN_CPU_XRAY_ENABLE_OUT = !OLL_CPU_XRAY_ENABLE;
-      } else {
-	PIN_CPU_XRAY_ENABLE_OUT = OLL_CPU_XRAY_ENABLE;
-      }
-#else
-      // For the 6/4, Do not pulse if neither Mode Bits are selected
-      if ((PIN_LOW_MODE_IN != ILL_MODE_BIT_SELECTED) && (PIN_HIGH_MODE_IN != ILL_MODE_BIT_SELECTED)) {
-	PIN_CPU_XRAY_ENABLE_OUT = !OLL_CPU_XRAY_ENABLE;
-      } else {
-	PIN_CPU_XRAY_ENABLE_OUT = OLL_CPU_XRAY_ENABLE;
-      }
-#endif      
-
-      // DPARKER should be able to remove this ifndef by appopriate tris settings
-      if (PIN_CUSTOMER_XRAY_ON_IN) {
+      if (PIN_CUSTOMER_XRAY_ON_IN == ILL_CUSTOMER_XRAY_ON) {
 	PIN_CPU_WARNING_LAMP_OUT = OLL_CPU_WARNING_LAMP;
       } else {
 	PIN_CPU_WARNING_LAMP_OUT = !OLL_CPU_WARNING_LAMP;
       }
-
+      
       if ((_MACRO_NOT_XRAY_ENABLE) || (_MACRO_NOT_HV_ENABLE) || (PIN_CUSTOMER_BEAM_ENABLE_IN == !ILL_CUSTOMER_BEAM_ENABLE)) {
 	global_data_A36487.control_state = STATE_HV_ENABLE;
       }
@@ -182,11 +166,9 @@ void DoStateMachine(void) {
   case STATE_FAULT:
     _CONTROL_NOT_CONFIGURED = 0;
     _CONTROL_NOT_READY = 1;
-#ifndef __PLC_INTERFACE
     PIN_CPU_HV_ENABLE_OUT = !OLL_CPU_HV_ENABLE;
     PIN_CPU_XRAY_ENABLE_OUT = !OLL_CPU_XRAY_ENABLE;
     PIN_CPU_WARNING_LAMP_OUT = !OLL_CPU_WARNING_LAMP;
-#endif
     while (global_data_A36487.control_state == STATE_FAULT) {
       DoA36487();
       
@@ -200,11 +182,9 @@ void DoStateMachine(void) {
   default:
     _CONTROL_NOT_CONFIGURED = 1;
     _CONTROL_NOT_READY = 1;
-#ifndef __PLC_INTERFACE
     PIN_CPU_HV_ENABLE_OUT = !OLL_CPU_HV_ENABLE;
     PIN_CPU_XRAY_ENABLE_OUT = !OLL_CPU_XRAY_ENABLE;
     PIN_CPU_WARNING_LAMP_OUT = !OLL_CPU_WARNING_LAMP;
-#endif
     global_data_A36487.control_state = STATE_UNKNOWN;
     while (1) {
       DoA36487();
@@ -244,18 +224,12 @@ void InitializeA36487(void) {
   TRISF = A36487_TRISF_VALUE;
   TRISG = A36487_TRISG_VALUE;
 
-  // Set up external INT3 */
+  // Set up external INT1 */
   // This is the trigger interrupt
-  _INT3IF = 0;		// Clear Interrupt flag
-  _INT3IE = 1;		// Enable INT3 Interrupt
-  _INT3EP = 1; 	        // Interrupt on falling edge
-  _INT3IP = 6;		// Set interrupt to high priority
-  
-
-  // Set up the TM3 interrupt
-  _T3IF = 0;
-  _T3IE = 0;
-  _T3IP = 7;            // Set interrupt to highest priority
+  _INT1IF = 0;		// Clear Interrupt flag
+  _INT1IE = 1;		// Enable INT3 Interrupt
+  _INT1EP = 1; 	        // Interrupt on falling edge
+  _INT1IP = 7;		// Set interrupt to high priority
   
   // Setup Timer 1 to measure interpulse period.
   T1CON = T1CON_VALUE;
@@ -270,8 +244,17 @@ void InitializeA36487(void) {
 
   // Setupt Timer 3 to measure the Pulse Holdoff time to prevent over PRF
   T3CON = T3CON_VALUE;
+  PR3 = TMR3_DELAY_2400US;
   TMR3 = 0;
   _T3IF = 0;
+
+  // DPARKER - THIS INTERRUPT IS NOT USED WITH EXTERNAL TRIGGER - REMOVE????
+  // Set up the TM3 interrupt
+  _T3IF = 0;
+  _T3IE = 0;
+  _T3IP = 6;            // Set interrupt to next highest priority
+  
+
 
 
   // Read the personality module
@@ -338,7 +321,11 @@ void InitializeA36487(void) {
   // Initialize the digital faults
   ETMDigitalInitializeInput(&global_data_A36487.pfn_fan_fault, ILL_PIN_PFN_FAULT, 50);
 
+  while (SendPersonalityToPLC(global_data_A36487.personality)); // Send personality data to the PLC
+  
 }
+
+
 
 unsigned char ReadDosePersonality() {
   unsigned int data;
@@ -389,17 +376,22 @@ unsigned char ReadDosePersonality() {
 void DoA36487(void) {
   unsigned long temp32;
 
-  ETMCanSlaveDoCan();
+  ETMCanSlaveDoCan();  // DPARKER disable this after we have finished testing code
   
+#ifdef __PLC_INTERFACE
+  ClrWdt();  // The watchdog is normally cleared by the Can Module, but without that we need to manually clear it
+#endif
+
   if (global_data_A36487.trigger_complete) {
     DoPostTriggerProcess();
     global_data_A36487.trigger_complete = 0;
-    
   }
 
 
   // ---------- UPDATE LOCAL FAULTS ------------------- //
   
+
+
   if ((global_data_A36487.control_state == STATE_FAULT) && ETMCanSlaveGetSyncMsgResetEnable()) {
     _FAULT_REGISTER = 0;
   }
@@ -430,6 +422,9 @@ void DoA36487(void) {
     }
   }
   
+  // DPARKER - ADD FILTER AND FAULT FOR GUN FAULT
+
+
   if (PIN_CPU_RF_OK_IN == ILL_PIN_RF_FAULT) {
     _FAULT_RF_STATUS = 1;
   } else {
@@ -459,8 +454,6 @@ void DoA36487(void) {
   _STATUS_CUSTOMER_X_RAY_DISABLE = !PIN_CUSTOMER_XRAY_ON_IN;
   _STATUS_LOW_MODE_OVERRIDE = PIN_LOW_MODE_IN;
   _STATUS_HIGH_MODE_OVERRIDE = PIN_HIGH_MODE_IN;
-  
-  
   
   if (_T2IF) {
     // Run these once every 10ms
@@ -698,11 +691,19 @@ void DoStartupLEDs(void) {
 
 
 void DoPostTriggerProcess(void) {
-  global_data_A36487.pulses_on++; // This counts the pulses
   ETMCanSlavePulseSyncSendNextPulseLevel(GetThisPulseLevel(), global_data_A36487.pulses_on, log_data_rep_rate_deci_hertz);
   
-  global_data_A36487.period_filtered = RCFilterNTau(global_data_A36487.period_filtered, global_data_A36487.last_period, RC_FILTER_4_TAU);  // Update the PFN
+  _U2RXIE = 0;  // You must disable the UART interrupt while writting or values could be bashed based on timing
   ProgramShiftRegistersDelays();  // Load the shift registers
+  _U2RXIE = 1;
+
+  global_data_A36487.pulses_on++; // This counts the pulses
+  
+  _U2RXIE = 0;  // You must disable the UART interrupt while writting or values could be bashed based on timing
+  ProgramShiftRegistersGrid(global_data_A36487.this_pulse_width);
+  _U2RXIE = 1;
+
+  global_data_A36487.period_filtered = RCFilterNTau(global_data_A36487.period_filtered, global_data_A36487.last_period, RC_FILTER_4_TAU);  // Update the PRF
 
   if (ETMCanSlaveGetSyncMsgHighSpeedLogging()) {
     // Log Pulse by Pulse data
@@ -712,8 +713,6 @@ void DoPostTriggerProcess(void) {
 			    *(unsigned int*)&data_grid_start,
 			    log_data_rep_rate_deci_hertz);
   }
-    
-  // This is used to detect if the trigger is high (which would cause constant pulses to the system)
 }
 
 
@@ -758,6 +757,8 @@ void ProgramShiftRegistersDelays(void) {
   Nop();
 }
 
+#define CAB_SCAN_GRID_START   150
+#define CAB_SCAN_GRID_STOP    155
 
 void ProgramShiftRegistersGrid(unsigned char dose_command) {
   unsigned int data;
@@ -765,11 +766,14 @@ void ProgramShiftRegistersGrid(unsigned char dose_command) {
   if (GetThisPulseLevel() == DOSE_COMMAND_HIGH_ENERGY) {
     data_grid_stop  = InterpolateValue(grid_stop_high0, grid_stop_high1, grid_stop_high2, grid_stop_high3, dose_command);
     data_grid_start = InterpolateValue(grid_start_high0, grid_start_high1, grid_start_high2, grid_start_high3, dose_command);
-  } else {
+  } else if (GetThisPulseLevel() == DOSE_COMMAND_LOW_ENERGY) {
     data_grid_stop  = InterpolateValue(grid_stop_low0, grid_stop_low1, grid_stop_low2, grid_stop_low3, dose_command);
     data_grid_start = InterpolateValue(grid_start_low0, grid_start_low1, grid_start_low2, grid_start_low3, dose_command);
+  } else {
+    data_grid_stop  = CAB_SCAN_GRID_STOP;
+    data_grid_start = CAB_SCAN_GRID_START;
   }
-
+  
   // Send out Grid start and stop delays
   data   = data_grid_stop;
   data <<= 8;
@@ -783,41 +787,12 @@ void ProgramShiftRegistersGrid(unsigned char dose_command) {
 
 
 unsigned int GetThisPulseLevel(void) {
-  /*
-    If High Mode is Selected and Low Mode is not, Return High Mode
-    If Low Mode is Selected and High Mode is not, Return low Mode
-    If Neither mode is selected, return high mode (the system will be disabled by another function)
-    If Both modes are selected
-       - For the 6/4 use the software level select
-       - For the 2.5 return high mode, but X-Rays will be inhibited by another function
-   */
-
-  if ((PIN_LOW_MODE_IN == ILL_MODE_BIT_SELECTED) && (PIN_HIGH_MODE_IN == ILL_MODE_BIT_SELECTED)) {
-    // High and low mode selected
-#ifdef __COMPILE_MODE_2_5
-    return DOSE_COMMAND_HIGH_ENERGY;
-#else
-    return global_data_A36487.this_pulse_level_energy_command;
-
-#endif
+  if (PIN_LOW_MODE_IN == ILL_MODE_BIT_SELECTED) {
+    // CAB SCAN
+    return DOSE_COMMAND_CAB_SCAN;
   }
   
-  if ((PIN_LOW_MODE_IN != ILL_MODE_BIT_SELECTED) && (PIN_HIGH_MODE_IN != ILL_MODE_BIT_SELECTED)) {
-    // Neither High or Low Mode selected - X_Rays will be disabled
-    return DOSE_COMMAND_HIGH_ENERGY;
-  }
-  
-  if ((PIN_LOW_MODE_IN != ILL_MODE_BIT_SELECTED) && (PIN_HIGH_MODE_IN == ILL_MODE_BIT_SELECTED)) {
-    // High mode selected
-    return DOSE_COMMAND_HIGH_ENERGY;
-  }
-  
-  if ((PIN_LOW_MODE_IN == ILL_MODE_BIT_SELECTED) && (PIN_HIGH_MODE_IN != ILL_MODE_BIT_SELECTED)) {
-    // Low mode selected
-    return DOSE_COMMAND_LOW_ENERGY;
-  }
-
-  return DOSE_COMMAND_HIGH_ENERGY;
+  return global_data_A36487.this_pulse_level;
 }
 
 
@@ -870,25 +845,16 @@ void __attribute__((interrupt(__save__(CORCON,SR)), no_auto_psv)) _U2RXInterrupt
     crc_check  += uart2_input_buffer[4];
 
     if (ETMCRC16(&uart2_input_buffer[0],4) == crc_check) {
-
-      _TRISC14 = 0;
       if (uart2_input_buffer[1] & 0x01) {
-	global_data_A36487.next_pulse_level_energy_command = DOSE_COMMAND_LOW_ENERGY;
+	global_data_A36487.next_pulse_level = DOSE_COMMAND_LOW_ENERGY;
       } else {
-	global_data_A36487.next_pulse_level_energy_command = DOSE_COMMAND_HIGH_ENERGY;
+	global_data_A36487.next_pulse_level = DOSE_COMMAND_HIGH_ENERGY;
       }
-      
       
       trigger_width = uart2_input_buffer[0];
       trigger_width_filtered = uart2_input_buffer[0];
       ProgramShiftRegistersGrid(uart2_input_buffer[0]);
-      // DPARKER - Debugging Only
-      if (global_data_A36487.next_pulse_level_energy_command == DOSE_COMMAND_HIGH_ENERGY) {
-	_LATC14 = 1;
-      } else {
-	_LATC14 = 0;
-      }
-
+      global_data_A36487.message_received = 1;
     }
     uart2_next_byte = 0;
   }
@@ -982,58 +948,74 @@ unsigned int UpdateDataOverAnalog(void) {
 #ifndef __INTERNAL_TRIGGER
 // External Trigger
 
-
 void __attribute__((interrupt, no_auto_psv)) _INT1Interrupt(void) {
+  unsigned int previous_level;
+  unsigned int previous_width;
+
   // A trigger was recieved
   
   // First check that the pulse is valid
   // It takes at least 4 clock cycles to get here
   // IF the trigger is valid and we are in the x-ray state, send out the start pulse
   if (PIN_TRIGGER_IN == ILL_TRIGGER_ACTIVE) {
-    if ((global_data_A36487.control_state == STATE_X_RAY_ENABLE) && (global_data_A36487.prf_ok)) {
-      PIN_CPU_START_OUT = OLL_CPU_START;
-      __delay32(60);  // Delay 6 uS
-    }
-    global_data_A36487.prf_ok = 0;
-    if ((TMR1 > MIN_PERIOD) || _T1IF) {
+    // The Trigger Pulse is Valid
+    if (_T3IF) {
+      // The minimum period between pulses has passed
+      if ((global_data_A36487.control_state == STATE_X_RAY_ENABLE)) {
+	PIN_CPU_START_OUT = OLL_CPU_START;
+	// Start The Holdoff Timer for the next pulse
+	TMR3 = 0;
+	_T3IF = 0;
+      }
       // Calculate the Trigger PRF
-      // TMR1 is used to time the time between INT3 interrupts
+      // TMR1 is used to time the time between INT1 interrupts
       global_data_A36487.last_period = TMR1;
       TMR1 = 0;
-      // Start The Holdoff Timer for the next pulse
-      TMR3 = 0;
-      PR3 = TMR3_DELAY_2400US;
-      _T3IF = 0;
-      _T3IE = 1;
       if (_T1IF) {
 	// The timer exceed it's period of 400mS - (Will happen if the PRF is less than 2.5Hz)
 	global_data_A36487.last_period = 62501;  // This will indicate that the PRF is Less than 2.5Hz
       }
       _T1IF = 0;
+      
+      // Prepare for future pulses
+      previous_level = global_data_A36487.this_pulse_level;
+      previous_width = global_data_A36487.this_pulse_width;
+      
+      global_data_A36487.this_pulse_level = global_data_A36487.next_pulse_level;
+      global_data_A36487.this_pulse_width = global_data_A36487.next_pulse_width;
+      
+      global_data_A36487.next_pulse_level = previous_level;
+      global_data_A36487.next_pulse_width = previous_width;
+      
+      
       global_data_A36487.trigger_complete = 1;
-      global_data_A36487.this_pulse_level_energy_command = global_data_A36487.next_pulse_level_energy_command;
       uart2_next_byte = 0;
+      
+
+      if (global_data_A36487.message_received == 0) {
+	global_data_A36487.bad_message_count++;
+	global_data_A36487.total_missed_messages++;
+      } else {
+	if (global_data_A36487.bad_message_count) {
+	  global_data_A36487.bad_message_count--;
+	}
+      }
+      global_data_A36487.message_received = 0;
+
+
+      // DPARKER - REDUCE THIS DELAY TO ACCOUNT FOR THE TIME IT TAKES TO GET HERE
+      __delay32(60);  // Delay 6 uS
     }
   }
   PIN_CPU_START_OUT = !OLL_CPU_START;
+  
   _INT1IF = 0;
-  _INT1IE = 0;
 }
 
-
-void __attribute__((interrupt, no_auto_psv)) _T3Interrupt(void) {
-  /*
-    // Enable trigger pulses to be generated
-  */
-  global_data_A36487.prf_ok = 1;
-
-  _T3IF = 0;
-  _T3IE = 0;
-}
 
 #else
 // Trigger is generated internally
-
+// DPARKER - FIGUER THIS OUT
 void __attribute__((interrupt, no_auto_psv)) _T3Interrupt(void) {
 
   if ((global_data_A36487.control_state == STATE_X_RAY_ENABLE)) {
@@ -1046,7 +1028,6 @@ void __attribute__((interrupt, no_auto_psv)) _T3Interrupt(void) {
 }
 
 #endif
-
 
 
 void __attribute__((interrupt, no_auto_psv)) _DefaultInterrupt(void) {
@@ -1176,38 +1157,52 @@ void __attribute__((interrupt, no_auto_psv)) _ADCInterrupt(void) {
 
 // DPARKER - THIS STILL NEEDS A LOT OF WORK
 int SendPersonalityToPLC(unsigned char id) {
+
   //The PIC will use the gun driver,PFN, and RF faults to the PLC
   //as outputs momentarily to tell the PLC which personality
   //module is installed
   
   int ret = 0;
+  
   /*
-    DPARKER REWORK THE TRIS HERE
-  TRIS_PIN_CPU_RF_OK_IN = TRIS_OUTPUT_MODE;
-  TRIS_PIN_CPU_GUNDRIVER_OK_IN = TRIS_OUTPUT_MODE;
-  TRIS_PIN_CPU_PFN_OK_IN = TRIS_OUTPUT_MODE;
+  _G0
+  _A6
+  _A7
   */
+  unsigned int tris_A_bak;
+  unsigned int tris_G_bak;
+
+  tris_A_bak = TRISA;
+  tris_G_bak = TRISG;
+
+  _TRISG0 = 0;
+  _TRISA6 = 0;
+  _TRISA7 = 0;
+
+#define PIN_CPU_PFN_OK_OUT              _LATG0
+#define PIN_CPU_GUNDRIVER_OK_OUT        _LATA6
+#define PIN_CPU_RF_OK_OUT               _LATA7
   
   if (id == HIGH_DOSE) {
-    PIN_CPU_PFN_OK_IN = 0;
-    PIN_CPU_GUNDRIVER_OK_IN = 0;
-    PIN_CPU_RF_OK_IN = 0;
+    PIN_CPU_PFN_OK_OUT = 0;
+    PIN_CPU_GUNDRIVER_OK_OUT = 0;
+    PIN_CPU_RF_OK_OUT = 0;
   } else if (id == MEDIUM_DOSE) {
-    PIN_CPU_PFN_OK_IN = 1;
-    PIN_CPU_GUNDRIVER_OK_IN = 1;
-    PIN_CPU_RF_OK_IN = 0;
+    PIN_CPU_PFN_OK_OUT = 1;
+    PIN_CPU_GUNDRIVER_OK_OUT = 1;
+    PIN_CPU_RF_OK_OUT = 0;
   } else if (id == LOW_DOSE) {
-    PIN_CPU_PFN_OK_IN = 1;
-    PIN_CPU_GUNDRIVER_OK_IN = 0;
-    PIN_CPU_RF_OK_IN = 1;
+    PIN_CPU_PFN_OK_OUT = 1;
+    PIN_CPU_GUNDRIVER_OK_OUT = 0;
+    PIN_CPU_RF_OK_OUT = 1;
   } else if (id == ULTRA_LOW_DOSE) {
-    PIN_CPU_PFN_OK_IN = 0;
-    PIN_CPU_GUNDRIVER_OK_IN = 1;
-    PIN_CPU_RF_OK_IN = 1;
+    PIN_CPU_PFN_OK_OUT = 0;
+    PIN_CPU_GUNDRIVER_OK_OUT = 1;
+    PIN_CPU_RF_OK_OUT = 1;
   } else {
-    PIN_CPU_PFN_OK_IN = 1;
-    PIN_CPU_GUNDRIVER_OK_IN = 1;
-    PIN_CPU_RF_OK_IN = 1;
+    PIN_CPU_PFN_OK_OUT = 1;
+    PIN_CPU_GUNDRIVER_OK_OUT = 1;
+    PIN_CPU_RF_OK_OUT = 1;
   }
 
   PIN_ANALOG_READ_COMPLETE_OUT = !OLL_ANALOG_READ_COMPLETE;   //PLCin = 1
@@ -1222,25 +1217,25 @@ int SendPersonalityToPLC(unsigned char id) {
   }
   
   if (id == HIGH_DOSE) {
-    PIN_CPU_PFN_OK_IN = 1;
-    PIN_CPU_GUNDRIVER_OK_IN = 1;
-    PIN_CPU_RF_OK_IN = 1;
+    PIN_CPU_PFN_OK_OUT = 1;
+    PIN_CPU_GUNDRIVER_OK_OUT = 1;
+    PIN_CPU_RF_OK_OUT = 1;
   } else if (id == MEDIUM_DOSE) {
-    PIN_CPU_PFN_OK_IN = 0;
-    PIN_CPU_GUNDRIVER_OK_IN = 0;
-    PIN_CPU_RF_OK_IN = 1;
+    PIN_CPU_PFN_OK_OUT = 0;
+    PIN_CPU_GUNDRIVER_OK_OUT = 0;
+    PIN_CPU_RF_OK_OUT = 1;
   } else if (id == LOW_DOSE) {
-    PIN_CPU_PFN_OK_IN = 0;
-    PIN_CPU_GUNDRIVER_OK_IN = 1;
-    PIN_CPU_RF_OK_IN = 0;
+    PIN_CPU_PFN_OK_OUT = 0;
+    PIN_CPU_GUNDRIVER_OK_OUT = 1;
+    PIN_CPU_RF_OK_OUT = 0;
   } else if (id == ULTRA_LOW_DOSE) {
-    PIN_CPU_PFN_OK_IN = 1;
-    PIN_CPU_GUNDRIVER_OK_IN = 0;
-    PIN_CPU_RF_OK_IN = 0;
+    PIN_CPU_PFN_OK_OUT = 1;
+    PIN_CPU_GUNDRIVER_OK_OUT = 0;
+    PIN_CPU_RF_OK_OUT = 0;
   } else {
-    PIN_CPU_PFN_OK_IN = 1;
-    PIN_CPU_GUNDRIVER_OK_IN = 1;
-    PIN_CPU_RF_OK_IN = 1;
+    PIN_CPU_PFN_OK_OUT = 1;
+    PIN_CPU_GUNDRIVER_OK_OUT = 1;
+    PIN_CPU_RF_OK_OUT = 1;
   }
   
   PIN_ANALOG_READ_COMPLETE_OUT = !OLL_ANALOG_READ_COMPLETE;   //PLCin = 1
@@ -1254,11 +1249,9 @@ int SendPersonalityToPLC(unsigned char id) {
     ret = 1;       //Failure to Communicate
   }
 
-/*
-    DPARKER REWORK THE TRIS HERE
-  TRIS_PIN_CPU_RF_OK_IN = TRIS_INPUT_MODE;
-  TRIS_PIN_CPU_GUNDRIVER_OK_IN = TRIS_INPUT_MODE;
-  TRIS_PIN_CPU_PFN_OK_IN = TRIS_INPUT_MODE;
-*/
+
+  TRISA = tris_A_bak;
+  TRISG = tris_G_bak;
+
   return ret;       //Communication Successful = 0
 }
