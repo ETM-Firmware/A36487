@@ -12,8 +12,8 @@
 #include "FIRMWARE_VERSION.h"
 
 #define __PLC_INTERFACE
-#define __ANALOG_DATA_INTERFACE
 //#define __COMPILE_MODE_2_5
+//#define __INTERNAL_TRIGGER
 
 #define DELAY_PLC   2500000  // 2.5 million cycles
 #define MIN_PERIOD  1
@@ -91,6 +91,9 @@ typedef struct{
 
   unsigned int bad_message_count;
   unsigned int total_missed_messages;
+  unsigned int message_received_count;
+  unsigned int personality_sent_results;
+  unsigned int personality_send_attempts;
 
 } TYPE_GLOBAL_DATA_A36487;
 
@@ -174,27 +177,29 @@ typedef struct{
 
 //  ----------  ADC CONFIGURATION --------------
 
-#ifdef __ANALOG_INTERFACE
+#ifdef __PLC_INTERFACE
 
 
 /*
   This sets up the ADC to work as following
   AUTO Sampeling
   External Vref+/Vref-
-  With 10MHz System Clock, ADC Clock is 450ns (4.5 clocks per ADC clock), Sample Time is 10 ADC Clock
-  Total Conversion time is 24 TAD = 10.8uS
+  With 10MHz System Clock, ADC Clock is 400ns (4 clocks per ADC clock), Sample Time is 4 ADC Clock
+  Total Conversion time is 18 TAD = 7.2uS
   8 Samples per Interrupt, use alternating buffers
   Scan Through Selected Inputs
   
-  We can convert all 8 samples in 86.4uS
+  We can convert all 8 samples in 57.6uS
+
+  128 samples of all 8 takes 7.37milliseconds
 */
 
 #define ADCON1_SETTING  (ADC_MODULE_OFF & ADC_IDLE_STOP & ADC_FORMAT_INTG & ADC_CLK_AUTO & ADC_AUTO_SAMPLING_ON)
-#define ADCON2_SETTING  (ADC_VREF_EXT_EXT & ADC_SCAN_ON & ADC_SAMPLES_PER_INT_8 & ADC_ALT_BUF_ON & ADC_ALT_INPUT_OFF)
+#define ADCON2_SETTING  (ADC_VREF_AVDD_AVSS & ADC_SCAN_ON & ADC_SAMPLES_PER_INT_8 & ADC_ALT_BUF_ON & ADC_ALT_INPUT_OFF)
 #define ADCHS_SETTING   (ADC_CH0_POS_SAMPLEA_AN7 & ADC_CH0_NEG_SAMPLEA_VREFN & ADC_CH0_POS_SAMPLEB_AN7 & ADC_CH0_NEG_SAMPLEB_VREFN)
 #define ADPCFG_SETTING  (ENABLE_AN8_ANA & ENABLE_AN9_ANA & ENABLE_AN10_ANA & ENABLE_AN11_ANA & ENABLE_AN12_ANA & ENABLE_AN13_ANA & ENABLE_AN14_ANA & ENABLE_AN15_ANA)
 #define ADCSSL_SETTING  (SKIP_SCAN_AN0 & SKIP_SCAN_AN1 & SKIP_SCAN_AN2 & SKIP_SCAN_AN3 & SKIP_SCAN_AN4 & SKIP_SCAN_AN5 & SKIP_SCAN_AN6 & SKIP_SCAN_AN7)
-#define ADCON3_SETTING  (ADC_SAMPLE_TIME_4 & ADC_CONV_CLK_SYSTEM & ADC_CONV_CLK_9Tcy2)
+#define ADCON3_SETTING  (ADC_SAMPLE_TIME_11 & ADC_CONV_CLK_SYSTEM & ADC_CONV_CLK_4Tcy)
 
 #else
 /*
@@ -203,7 +208,11 @@ typedef struct{
 */
 
 #define ADCON1_SETTING  (ADC_MODULE_OFF & ADC_IDLE_STOP & ADC_FORMAT_INTG & ADC_CLK_AUTO & ADC_AUTO_SAMPLING_ON)
+#define ADCON2_SETTING  0x0000
+#define ADCON3_SETTING  0x0000
+#define ADCHS_SETTING   0x0000
 #define ADPCFG_SETTING  0xFFFF // All pins are digital Inputs
+#define ADCSSL_SETTING  0x0000
 
 #endif
 
@@ -299,6 +308,8 @@ typedef struct{
 #define PIN_ANALOG_READ_COMPLETE_OUT      _LATD15
 #define PIN_PORTAL_GANTRY_MODE_OUT        _LATF2
 
+#define PIN_40US_TEST_POINT               _LATA15
+
 
 #define OLL_CPU_WARNING_LAMP                1
 #define OLL_ANALOG_READ_COMPLETE            1
@@ -346,7 +357,8 @@ typedef struct{
 #define PIN_CPU_STANDBY_OUT                 _LATB5
 #define PIN_CPU_XRAY_ENABLE_OUT             _LATC13
 #define PIN_CPU_SUMFLT_OUT                  _LATD0
-#define PIN_CPU_HV_ENABLE_OUT               _LATD8
+//#define PIN_CPU_HV_ENABLE_OUT               _LATD8 DPARKER testing only
+#define PIN_CPU_HV_ENABLE_OUT               _LATG15
 #define PIN_CPU_WARMUP_OUT                  _LATD10
 
 #define OLL_CPU_READY                       1
@@ -364,7 +376,7 @@ typedef struct{
 
 #ifdef __PLC_INTERFACE
 
-#define A36487_TRISA_VALUE 0b1111111111111111
+#define A36487_TRISA_VALUE 0b0111111111111111
 #define A36487_TRISB_VALUE 0b1111111111111111
 #define A36487_TRISC_VALUE 0b1011111111110011
 #define A36487_TRISD_VALUE 0b0100010101100001

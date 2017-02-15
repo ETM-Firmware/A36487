@@ -1,7 +1,18 @@
 #include "A36487.h"
 
+#define ANALOG_STATE_WAIT_FOR_DATA_READ  10
+#define ANALOG_STATE_WAIT_FOR_PLC_SET    20
+#define ANALOG_STATE_WAIT_READ_COMPLETE  30
+#define ANALOG_STATE_DATA_READ_FAULT     40
 
 
+unsigned int analog_interface_attempts;
+unsigned int analog_interface_faults;
+unsigned int analog_read_count;
+
+
+unsigned int debug_uart2_int_count;
+unsigned int debug_uart2_message_count;
 
 
 void UpdateAnalogDataFromPLC(void);
@@ -90,6 +101,7 @@ void DoStateMachine(void) {
       if ((global_data_A36487.led_flash_counter >= LED_STARTUP_FLASH_TIME) && (global_data_A36487.counter_config_received == 0b1111)) {
 	global_data_A36487.control_state = STATE_HV_OFF;
       }
+
     }
     break;
 
@@ -173,7 +185,7 @@ void DoStateMachine(void) {
       DoA36487();
       
       if (_FAULT_REGISTER == 0) {
-	global_data_A36487.control_state = STATE_WAIT_FOR_CONFIG;
+	global_data_A36487.control_state = STATE_HV_OFF;
       }
     }
     break;
@@ -216,6 +228,8 @@ void InitializeA36487(void) {
   */
 
 
+  PIN_ANALOG_READ_COMPLETE_OUT = OLL_ANALOG_READ_COMPLETE;
+
   // Initialize all I/O Registers
   TRISA = A36487_TRISA_VALUE;
   TRISB = A36487_TRISB_VALUE;
@@ -227,8 +241,8 @@ void InitializeA36487(void) {
   // Set up external INT1 */
   // This is the trigger interrupt
   _INT1IF = 0;		// Clear Interrupt flag
-  _INT1IE = 1;		// Enable INT3 Interrupt
-  _INT1EP = 1; 	        // Interrupt on falling edge
+  _INT1IE = 1;		// Enable INT1 Interrupt
+  _INT1EP = 0; 	        // Interrupt on rising edge
   _INT1IP = 7;		// Set interrupt to high priority
   
   // Setup Timer 1 to measure interpulse period.
@@ -258,12 +272,7 @@ void InitializeA36487(void) {
 
 
   // Read the personality module
-#ifdef __COMPILE_MODE_2_5
-  global_data_A36487.personality = 0;
-#else
   global_data_A36487.personality = ReadDosePersonality();
-  global_data_A36487.personality = 0; // DPARKER THIS HAS BEEN ADDED FOR TESTING ONLY - REMOVE
-#endif
 
   _STATUS_PERSONALITY_READ_COMPLETE = 0;
   if (global_data_A36487.personality != 0xFF) {
@@ -304,25 +313,43 @@ void InitializeA36487(void) {
   // DPARKER CONSIDER WRITING MODULE FOR SHIFT REGISTER DELAY LINE
 
   
-  // Configure UART2 for communicating with Customer
+  // Configure UART2 for communicating with Serial Dose Command
   U2BRG = A36487_U2_BRG_VALUE;
   U2STA = A36487_U2_STA_VALUE;
   U2MODE = A36487_U2_MODE_VALUE;
   uart2_next_byte = 0;  
   _U2RXIF = 0;
-  _U2RXIP = 5;
+  _U2RXIP = 4;
   _U2RXIE = 1;
 
   
-  // Initialize the ADC to be off with all pins digital inputs
+  // Initialize the ADC
   ADCON1 = ADCON1_SETTING;  
+  ADCON2 = ADCON2_SETTING;
+  ADCON3 = ADCON3_SETTING;
   ADPCFG = ADPCFG_SETTING;
+  ADCSSL = ADCSSL_SETTING;
+  ADCHS  = ADCHS_SETTING;
+  _ADIF = 0;
+  _ADIE  = 1;
+  _ADON  = 1;
+  _ADIP  = 5;
 
   // Initialize the digital faults
   ETMDigitalInitializeInput(&global_data_A36487.pfn_fan_fault, ILL_PIN_PFN_FAULT, 50);
 
-  while (SendPersonalityToPLC(global_data_A36487.personality)); // Send personality data to the PLC
-  
+#ifdef __PLC_INTERFACE
+  global_data_A36487.personality_sent_results = 1;
+  global_data_A36487.personality_send_attempts = 0;
+  while ((global_data_A36487.personality_sent_results) && (global_data_A36487.personality_send_attempts < 30)) {
+    global_data_A36487.personality_sent_results = SendPersonalityToPLC(global_data_A36487.personality);
+    global_data_A36487.personality_send_attempts++;
+    ClrWdt();
+  }
+#endif 
+
+  global_data_A36487.state_analog_data_read = ANALOG_STATE_WAIT_FOR_DATA_READ;
+
 }
 
 
@@ -500,50 +527,58 @@ void DoA36487(void) {
     }
   
     // Update the debugging Data
-    //ETMCanSlaveSetDebugRegister(0, (grid_start_high3 << 8) + grid_start_high2);
-    //ETMCanSlaveSetDebugRegister(1, (grid_start_high1 << 8) + grid_start_high0);
-    //ETMCanSlaveSetDebugRegister(2, (pfn_delay_high << 8) + dose_sample_delay_high);
-    ETMCanSlaveSetDebugRegister(3, (grid_stop_high3 << 8) + grid_stop_high2);
-    ETMCanSlaveSetDebugRegister(4, (grid_stop_high1 << 8) + grid_stop_high0);
-    ETMCanSlaveSetDebugRegister(5, (afc_delay_high << 8) + magnetron_current_sample_delay_high);
-    ETMCanSlaveSetDebugRegister(6, (grid_start_low3 << 8) + grid_start_low2);
-    ETMCanSlaveSetDebugRegister(7, (grid_start_low1 << 8) + grid_start_low0);
-    ETMCanSlaveSetDebugRegister(8, (pfn_delay_low << 8) + dose_sample_delay_low);
-    ETMCanSlaveSetDebugRegister(9, data_grid_start);
-    ETMCanSlaveSetDebugRegister(10, data_grid_stop);
-    ETMCanSlaveSetDebugRegister(0xb, global_data_A36487.pulses_on);
-    ETMCanSlaveSetDebugRegister(0xC, global_data_A36487.last_period);
-    ETMCanSlaveSetDebugRegister(0xD, log_data_rep_rate_deci_hertz);
-    ETMCanSlaveSetDebugRegister(0xE, 0);
-    ETMCanSlaveSetDebugRegister(0xF, global_data_A36487.period_filtered);
+    ETMCanSlaveSetDebugRegister(0x0, global_data_A36487.control_state);
+    ETMCanSlaveSetDebugRegister(0x1, global_data_A36487.total_missed_messages);
+    ETMCanSlaveSetDebugRegister(0x2, global_data_A36487.message_received_count);
 
+    ETMCanSlaveSetDebugRegister(0x3, debug_uart2_message_count);
+    ETMCanSlaveSetDebugRegister(0x4, debug_uart2_int_count);
+    ETMCanSlaveSetDebugRegister(0x5, grid_start_high1);
+    ETMCanSlaveSetDebugRegister(0x6, grid_start_high0);
+
+    ETMCanSlaveSetDebugRegister(0x7, grid_stop_high3);
+    ETMCanSlaveSetDebugRegister(0x8, grid_stop_high2);
+    ETMCanSlaveSetDebugRegister(0x9, grid_stop_high1);
+    ETMCanSlaveSetDebugRegister(0xA, grid_stop_high0);
+
+    ETMCanSlaveSetDebugRegister(0xB, analog_interface_attempts);
+    ETMCanSlaveSetDebugRegister(0xC, analog_interface_faults);
+    ETMCanSlaveSetDebugRegister(0xD, analog_read_count);
+    ETMCanSlaveSetDebugRegister(0xE, global_data_A36487.state_analog_data_read);
+    ETMCanSlaveSetDebugRegister(0xF, global_data_A36487.personality_send_attempts);
     UpdateAnalogDataFromPLC();
   }
 }
 
 
-#define ANALOG_STATE_WAIT_FOR_DATA_READ  10
-#define ANALOG_STATE_WAIT_FOR_PLC_SET    20
-#define ANALOG_STATE_WAIT_READ_COMPLETE  30
-#define ANALOG_STATE_DATA_READ_FAULT     40
+
 
 
 void UpdateAnalogDataFromPLC(void) {
   global_data_A36487.analog_interface_timer++;
   
+  if ((global_data_A36487.state_analog_data_read != ANALOG_STATE_WAIT_FOR_DATA_READ) &&
+      (global_data_A36487.state_analog_data_read != ANALOG_STATE_WAIT_FOR_PLC_SET) &&
+      (global_data_A36487.state_analog_data_read != ANALOG_STATE_WAIT_READ_COMPLETE)) {
+    global_data_A36487.state_analog_data_read = ANALOG_STATE_DATA_READ_FAULT;
+  }
+
+
   if ((PIN_PACKAGE_VALID_IN == ILL_PACKAGE_VALID) && (global_data_A36487.state_analog_data_read == ANALOG_STATE_WAIT_FOR_DATA_READ)) {
     // INITIATE Data Read
+    analog_interface_attempts++;
+
+
     PIN_ANALOG_READ_COMPLETE_OUT = !OLL_ANALOG_READ_COMPLETE;
     global_data_A36487.analog_register_select = 0;
     global_data_A36487.analog_interface_timer = 0;
     global_data_A36487.state_analog_data_read = ANALOG_STATE_WAIT_FOR_PLC_SET;
-    _ADON = 1;
   }
   
-  if ((global_data_A36487.state_analog_data_read == ANALOG_STATE_WAIT_FOR_PLC_SET) && (global_data_A36487.analog_interface_timer >= 250)) {
-    if (PIN_PACKAGE_VALID_IN != ILL_PACKAGE_VALID) {
+  if ((global_data_A36487.state_analog_data_read == ANALOG_STATE_WAIT_FOR_PLC_SET) && (global_data_A36487.analog_interface_timer >= 25)) {
+    if (PIN_PACKAGE_VALID_IN == !ILL_PACKAGE_VALID) {
       global_data_A36487.state_analog_data_read = ANALOG_STATE_DATA_READ_FAULT;
-    } if (global_data_A36487.analog_register_select >= 4) {
+    } else if (global_data_A36487.analog_register_select >= 3) {
       global_data_A36487.state_analog_data_read = ANALOG_STATE_DATA_READ_FAULT;
     } else {
       ReadAnalogRegister(); 	// read the analog data
@@ -554,14 +589,14 @@ void UpdateAnalogDataFromPLC(void) {
     }
   }
   
-  if ((global_data_A36487.state_analog_data_read == ANALOG_STATE_WAIT_READ_COMPLETE) && (global_data_A36487.analog_interface_timer >= 250)) {
+  if ((global_data_A36487.state_analog_data_read == ANALOG_STATE_WAIT_READ_COMPLETE) && (global_data_A36487.analog_interface_timer >= 25)) {
     if (PIN_PACKAGE_VALID_IN == ILL_PACKAGE_VALID) {
       global_data_A36487.state_analog_data_read = ANALOG_STATE_DATA_READ_FAULT;
     } else {
-      if (global_data_A36487.analog_register_select >= 4) {
+      if (global_data_A36487.analog_register_select >= 3) {
 	global_data_A36487.state_analog_data_read = ANALOG_STATE_WAIT_FOR_DATA_READ;
+	global_data_A36487.counter_config_received = 0b1111;
 	PIN_ANALOG_READ_COMPLETE_OUT = OLL_ANALOG_READ_COMPLETE;
-	_ADON = 0;
       } else {
 	PIN_ANALOG_READ_COMPLETE_OUT = !OLL_ANALOG_READ_COMPLETE;
 	global_data_A36487.analog_interface_timer = 0;
@@ -576,7 +611,7 @@ void UpdateAnalogDataFromPLC(void) {
     global_data_A36487.analog_interface_timer = 0;
     global_data_A36487.state_analog_data_read = ANALOG_STATE_WAIT_FOR_DATA_READ;
     PIN_ANALOG_READ_COMPLETE_OUT = OLL_ANALOG_READ_COMPLETE;
-    _ADON = 0;
+    analog_interface_faults++;
   }
 }
 
@@ -614,16 +649,18 @@ void ReadAnalogRegister(void) {
     22 = Not Implemented
   */
 
+  analog_read_count++;
+
   switch (global_data_A36487.analog_register_select) {
   case 0:
     grid_start_high3 = (global_data_A36487.analog_1.filtered_adc_reading >> 8);
     grid_start_high2 = (global_data_A36487.analog_2.filtered_adc_reading >> 8);
     grid_start_high1 = (global_data_A36487.analog_3.filtered_adc_reading >> 8);
     grid_start_high0 = (global_data_A36487.analog_4.filtered_adc_reading >> 8);
-    grid_start_low3  = (global_data_A36487.analog_1.filtered_adc_reading >> 8);
-    grid_start_low2  = (global_data_A36487.analog_2.filtered_adc_reading >> 8);
-    grid_start_low1  = (global_data_A36487.analog_3.filtered_adc_reading >> 8);
-    grid_start_low0  = (global_data_A36487.analog_4.filtered_adc_reading >> 8);
+    grid_start_low3  = (global_data_A36487.analog_5.filtered_adc_reading >> 8);
+    grid_start_low2  = (global_data_A36487.analog_6.filtered_adc_reading >> 8);
+    grid_start_low1  = (global_data_A36487.analog_7.filtered_adc_reading >> 8);
+    grid_start_low0  = (global_data_A36487.analog_8.filtered_adc_reading >> 8);
     break;
 
   case 1:
@@ -631,10 +668,10 @@ void ReadAnalogRegister(void) {
     grid_stop_high2  = (global_data_A36487.analog_2.filtered_adc_reading >> 8);
     grid_stop_high1  = (global_data_A36487.analog_3.filtered_adc_reading >> 8);
     grid_stop_high0  = (global_data_A36487.analog_4.filtered_adc_reading >> 8);
-    grid_stop_low3   = (global_data_A36487.analog_1.filtered_adc_reading >> 8);
-    grid_stop_low2   = (global_data_A36487.analog_2.filtered_adc_reading >> 8);
-    grid_stop_low1   = (global_data_A36487.analog_3.filtered_adc_reading >> 8);
-    grid_stop_low0   = (global_data_A36487.analog_4.filtered_adc_reading >> 8);
+    grid_stop_low3   = (global_data_A36487.analog_5.filtered_adc_reading >> 8);
+    grid_stop_low2   = (global_data_A36487.analog_6.filtered_adc_reading >> 8);
+    grid_stop_low1   = (global_data_A36487.analog_7.filtered_adc_reading >> 8);
+    grid_stop_low0   = (global_data_A36487.analog_8.filtered_adc_reading >> 8);
     break;
 
   case 2:
@@ -642,10 +679,10 @@ void ReadAnalogRegister(void) {
     dose_sample_delay_high  = (global_data_A36487.analog_2.filtered_adc_reading >> 8);
     pfn_delay_low           = (global_data_A36487.analog_3.filtered_adc_reading >> 8);
     dose_sample_delay_low   = (global_data_A36487.analog_4.filtered_adc_reading >> 8);
-    afc_delay_high          = (global_data_A36487.analog_1.filtered_adc_reading >> 8);
-    magnetron_current_sample_delay_high  = (global_data_A36487.analog_2.filtered_adc_reading >> 8);
-    afc_delay_low           = (global_data_A36487.analog_3.filtered_adc_reading >> 8);
-    magnetron_current_sample_delay_low  = (global_data_A36487.analog_4.filtered_adc_reading >> 8);
+    afc_delay_high          = (global_data_A36487.analog_5.filtered_adc_reading >> 8);
+    magnetron_current_sample_delay_high  = (global_data_A36487.analog_6.filtered_adc_reading >> 8);
+    afc_delay_low           = (global_data_A36487.analog_7.filtered_adc_reading >> 8);
+    magnetron_current_sample_delay_low  = (global_data_A36487.analog_8.filtered_adc_reading >> 8);
     break;
 
   case 3:
@@ -787,9 +824,14 @@ void ProgramShiftRegistersGrid(unsigned char dose_command) {
 
 
 unsigned int GetThisPulseLevel(void) {
-  if (PIN_LOW_MODE_IN == ILL_MODE_BIT_SELECTED) {
+  if ((PIN_LOW_MODE_IN == ILL_MODE_BIT_SELECTED) && (PIN_HIGH_MODE_IN == !ILL_MODE_BIT_SELECTED)) {
     // CAB SCAN
     return DOSE_COMMAND_CAB_SCAN;
+  }
+
+  if ((PIN_LOW_MODE_IN == !ILL_MODE_BIT_SELECTED) && (PIN_HIGH_MODE_IN == ILL_MODE_BIT_SELECTED)) {
+    // HIGH MODE ONLY
+    return DOSE_COMMAND_HIGH_ENERGY;
   }
   
   return global_data_A36487.this_pulse_level;
@@ -831,6 +873,7 @@ void __attribute__((interrupt(__save__(CORCON,SR)), no_auto_psv)) _U2RXInterrupt
   unsigned int crc_check;
   unsigned char data;
   _U2RXIF = 0;
+  debug_uart2_int_count++;
   while (U2STAbits.URXDA) {
     data = U2RXREG;
     //uart2_input_buffer[uart2_next_byte] = ReverseBits(data);
@@ -843,7 +886,7 @@ void __attribute__((interrupt(__save__(CORCON,SR)), no_auto_psv)) _U2RXInterrupt
     crc_check   = uart2_input_buffer[5];
     crc_check <<= 8;
     crc_check  += uart2_input_buffer[4];
-
+    debug_uart2_message_count++;
     if (ETMCRC16(&uart2_input_buffer[0],4) == crc_check) {
       if (uart2_input_buffer[1] & 0x01) {
 	global_data_A36487.next_pulse_level = DOSE_COMMAND_LOW_ENERGY;
@@ -855,6 +898,7 @@ void __attribute__((interrupt(__save__(CORCON,SR)), no_auto_psv)) _U2RXInterrupt
       trigger_width_filtered = uart2_input_buffer[0];
       ProgramShiftRegistersGrid(uart2_input_buffer[0]);
       global_data_A36487.message_received = 1;
+      global_data_A36487.message_received_count++;
     }
     uart2_next_byte = 0;
   }
@@ -899,56 +943,10 @@ unsigned char ReverseBits(unsigned char byte_to_reverse) {
 
 
 
-	unsigned char Analog[33];
-
-
-
-unsigned int UpdateDataOverAnalog(void) {
-  /*
-    Procedure for updating values
-    (1) The PLC sets the ANALOG_PACKAGE_VALID Pin
-    (2) The PIC sets the READY_FOR_ANALOG Pin
-    (3) The PIC waits 250ms
-    (4) The PIC checks that the ANALOG_PACKAGE_VALID Pin is high
-        If it is not high, A communication error is created
-    (5) The PIC reads the analog data for register group 0
-    (6) The PIC clears the READ_FOR_ANALOG Pin
-    (7) The PIC waits 250ms
-    (8) The Pic checks that the ANALOG_PACKAGE_VALUD Pin is low
-        If it is not low,  A communication error is created
-    (9) Repeate Steps 2->8, for register group 1,2,3
-  */
-
-  
-
-  if (PIN_PACKAGE_VALID_IN == !ILL_PACKAGE_VALID) {
-    return 1;
-  }
-
-  PIN_ANALOG_READ_COMPLETE_OUT = !OLL_ANALOG_READ_COMPLETE;
-  __delay32(DELAY_PLC);  // Wait 250mS
-  if (PIN_PACKAGE_VALID_IN == ILL_PACKAGE_VALID) {
-    return 1;
-  } 
-
-  // Read the first set on analog values
-  
-  PIN_ANALOG_READ_COMPLETE_OUT = OLL_ANALOG_READ_COMPLETE;
-  __delay32(DELAY_PLC);  // Wait 250mS
-  if (PIN_PACKAGE_VALID_IN == !ILL_PACKAGE_VALID) {
-    return 1;
-  }
-  
-  global_data_A36487.counter_config_received = 0b1111;
-  
-  return 0;
-}
-
-
 #ifndef __INTERNAL_TRIGGER
 // External Trigger
 
-void __attribute__((interrupt, no_auto_psv)) _INT1Interrupt(void) {
+void __attribute__((interrupt, shadow, no_auto_psv)) _INT1Interrupt(void) {
   unsigned int previous_level;
   unsigned int previous_width;
 
@@ -957,6 +955,7 @@ void __attribute__((interrupt, no_auto_psv)) _INT1Interrupt(void) {
   // First check that the pulse is valid
   // It takes at least 4 clock cycles to get here
   // IF the trigger is valid and we are in the x-ray state, send out the start pulse
+  PIN_40US_TEST_POINT = 1;
   if (PIN_TRIGGER_IN == ILL_TRIGGER_ACTIVE) {
     // The Trigger Pulse is Valid
     if (_T3IF) {
@@ -1010,6 +1009,7 @@ void __attribute__((interrupt, no_auto_psv)) _INT1Interrupt(void) {
   PIN_CPU_START_OUT = !OLL_CPU_START;
   
   _INT1IF = 0;
+  PIN_40US_TEST_POINT = 0;
 }
 
 
@@ -1039,7 +1039,7 @@ void __attribute__((interrupt, no_auto_psv)) _DefaultInterrupt(void) {
 
 // Executes the CAN Commands
 void ETMCanSlaveExecuteCMDBoardSpecific(ETMCanMessage* message_ptr) {
-#ifndef __ANALOG_DATA_INTERFACE
+#ifndef __PLC_INTERFACE
   unsigned int index_word;
   //unsigned int temp;
   index_word = message_ptr->word3;
@@ -1090,7 +1090,6 @@ void ETMCanSlaveExecuteCMDBoardSpecific(ETMCanMessage* message_ptr) {
 
 void __attribute__((interrupt, no_auto_psv)) _ADCInterrupt(void) {
   _ADIF = 0;
-
   // Copy Data From Buffer to RAM
   if (_BUFS) {
     // read ADCBUF 0-7
@@ -1147,7 +1146,7 @@ void __attribute__((interrupt, no_auto_psv)) _ADCInterrupt(void) {
     global_data_A36487.analog_6.adc_accumulator = 0;
     global_data_A36487.analog_7.adc_accumulator = 0;
     global_data_A36487.analog_8.adc_accumulator = 0;
-
+    
     global_data_A36487.accumulator_counter = 0;
   }
 }
@@ -1183,19 +1182,19 @@ int SendPersonalityToPLC(unsigned char id) {
 #define PIN_CPU_GUNDRIVER_OK_OUT        _LATA6
 #define PIN_CPU_RF_OK_OUT               _LATA7
   
-  if (id == HIGH_DOSE) {
+  if (id == 0) {
     PIN_CPU_PFN_OK_OUT = 0;
     PIN_CPU_GUNDRIVER_OK_OUT = 0;
     PIN_CPU_RF_OK_OUT = 0;
-  } else if (id == MEDIUM_DOSE) {
+  } else if (id == 1) {
     PIN_CPU_PFN_OK_OUT = 1;
     PIN_CPU_GUNDRIVER_OK_OUT = 1;
     PIN_CPU_RF_OK_OUT = 0;
-  } else if (id == LOW_DOSE) {
+  } else if (id == 2) {
     PIN_CPU_PFN_OK_OUT = 1;
     PIN_CPU_GUNDRIVER_OK_OUT = 0;
     PIN_CPU_RF_OK_OUT = 1;
-  } else if (id == ULTRA_LOW_DOSE) {
+  } else if (id == 3) {
     PIN_CPU_PFN_OK_OUT = 0;
     PIN_CPU_GUNDRIVER_OK_OUT = 1;
     PIN_CPU_RF_OK_OUT = 1;
@@ -1216,19 +1215,19 @@ int SendPersonalityToPLC(unsigned char id) {
       ret = 1;       //Failure to Communicate
   }
   
-  if (id == HIGH_DOSE) {
+  if (id == 0) {
     PIN_CPU_PFN_OK_OUT = 1;
     PIN_CPU_GUNDRIVER_OK_OUT = 1;
     PIN_CPU_RF_OK_OUT = 1;
-  } else if (id == MEDIUM_DOSE) {
+  } else if (id == 1) {
     PIN_CPU_PFN_OK_OUT = 0;
     PIN_CPU_GUNDRIVER_OK_OUT = 0;
     PIN_CPU_RF_OK_OUT = 1;
-  } else if (id == LOW_DOSE) {
+  } else if (id == 2) {
     PIN_CPU_PFN_OK_OUT = 0;
     PIN_CPU_GUNDRIVER_OK_OUT = 1;
     PIN_CPU_RF_OK_OUT = 0;
-  } else if (id == ULTRA_LOW_DOSE) {
+  } else if (id == 3) {
     PIN_CPU_PFN_OK_OUT = 1;
     PIN_CPU_GUNDRIVER_OK_OUT = 0;
     PIN_CPU_RF_OK_OUT = 0;
