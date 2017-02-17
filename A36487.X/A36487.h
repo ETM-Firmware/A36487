@@ -11,9 +11,36 @@
 #include "P1395_CAN_SLAVE.h"
 #include "FIRMWARE_VERSION.h"
 
-#define __PLC_INTERFACE
+
+/*
+  OPTIONS
+  6/4 Mev
+  PLC Internface 
+  Serial Dose
+  (Disable Internal Trigger)
+  (Disable Can Interface - Or not for debugging purposes)
+  
+  2.5 Mev
+  Can Interface
+  Serial Dose
+  (Disable Internal Trigger)
+  (Disable PLC Interface)
+
+  NDT
+  Can Interface
+  Internal Trigger
+  (Disable Serial Dose)
+  (DIsable PLC Interface)
+  
+ */
+
+#define __PLC_INTERFACE  // IF NOT, Implies Can interface 
+#define __TRIGGER_AFC_HIGH_ONLY
+
+//#define __INTERNAL_TRIGGER // - Does not Have Serial Dose
+
 //#define __COMPILE_MODE_2_5
-//#define __INTERNAL_TRIGGER
+
 
 #define DELAY_PLC   2500000  // 2.5 million cycles
 #define MIN_PERIOD  1
@@ -59,7 +86,6 @@ typedef struct{
   unsigned int period_filtered;          // This is an filtered version of the PRF
   unsigned int pulses_on;                // This counts the number of pusles, sent out to each board so that data between pulses can be synced
   unsigned int trigger_complete;         // This bit is set when the trigger ISR occurs
-  unsigned int led_state;                // DPARKER - HOW IS THIS USED???? As far as I can tell it isn't        
   unsigned char personality;             // DPARKER - This is not working at the moment //0=UL, 1=L, 2=M, 3=H
 
   
@@ -92,8 +118,6 @@ typedef struct{
   unsigned int bad_message_count;
   unsigned int total_missed_messages;
   unsigned int message_received_count;
-  unsigned int personality_sent_results;
-  unsigned int personality_send_attempts;
 
 } TYPE_GLOBAL_DATA_A36487;
 
@@ -124,7 +148,7 @@ typedef struct{
 #define _STATUS_PERSONALITY_READ_COMPLETE          _WARNING_4
 //#define _STATUS_PANEL_OPEN                       _WARNING_5
 //#define _STATUS_KEYLOCK_OPEN                     _WARNING_6
-  //#define _STATUS_TRIGGER_STAYED_ON                  _WARNING_7
+//#define _STATUS_TRIGGER_STAYED_ON                _WARNING_7
 
 
 #define _PERSONALITY_BIT_0                         _NOT_LOGGED_0
@@ -177,9 +201,6 @@ typedef struct{
 
 //  ----------  ADC CONFIGURATION --------------
 
-#ifdef __PLC_INTERFACE
-
-
 /*
   This sets up the ADC to work as following
   AUTO Sampeling
@@ -194,29 +215,24 @@ typedef struct{
   128 samples of all 8 takes 7.37milliseconds
 */
 
-#define ADCON1_SETTING  (ADC_MODULE_OFF & ADC_IDLE_STOP & ADC_FORMAT_INTG & ADC_CLK_AUTO & ADC_AUTO_SAMPLING_ON)
-#define ADCON2_SETTING  (ADC_VREF_AVDD_AVSS & ADC_SCAN_ON & ADC_SAMPLES_PER_INT_8 & ADC_ALT_BUF_ON & ADC_ALT_INPUT_OFF)
-#define ADCHS_SETTING   (ADC_CH0_POS_SAMPLEA_AN7 & ADC_CH0_NEG_SAMPLEA_VREFN & ADC_CH0_POS_SAMPLEB_AN7 & ADC_CH0_NEG_SAMPLEB_VREFN)
-#define ADPCFG_SETTING  (ENABLE_AN8_ANA & ENABLE_AN9_ANA & ENABLE_AN10_ANA & ENABLE_AN11_ANA & ENABLE_AN12_ANA & ENABLE_AN13_ANA & ENABLE_AN14_ANA & ENABLE_AN15_ANA)
-#define ADCSSL_SETTING  (SKIP_SCAN_AN0 & SKIP_SCAN_AN1 & SKIP_SCAN_AN2 & SKIP_SCAN_AN3 & SKIP_SCAN_AN4 & SKIP_SCAN_AN5 & SKIP_SCAN_AN6 & SKIP_SCAN_AN7)
-#define ADCON3_SETTING  (ADC_SAMPLE_TIME_11 & ADC_CONV_CLK_SYSTEM & ADC_CONV_CLK_4Tcy)
+#define ADCON1_SETTING_EN  (ADC_MODULE_OFF & ADC_IDLE_STOP & ADC_FORMAT_INTG & ADC_CLK_AUTO & ADC_AUTO_SAMPLING_ON)
+#define ADCON2_SETTING_EN  (ADC_VREF_AVDD_AVSS & ADC_SCAN_ON & ADC_SAMPLES_PER_INT_8 & ADC_ALT_BUF_ON & ADC_ALT_INPUT_OFF)
+#define ADCHS_SETTING_EN   (ADC_CH0_POS_SAMPLEA_AN7 & ADC_CH0_NEG_SAMPLEA_VREFN & ADC_CH0_POS_SAMPLEB_AN7 & ADC_CH0_NEG_SAMPLEB_VREFN)
+#define ADPCFG_SETTING_EN  (ENABLE_AN8_ANA & ENABLE_AN9_ANA & ENABLE_AN10_ANA & ENABLE_AN11_ANA & ENABLE_AN12_ANA & ENABLE_AN13_ANA & ENABLE_AN14_ANA & ENABLE_AN15_ANA)
+#define ADCSSL_SETTING_EN  (SKIP_SCAN_AN0 & SKIP_SCAN_AN1 & SKIP_SCAN_AN2 & SKIP_SCAN_AN3 & SKIP_SCAN_AN4 & SKIP_SCAN_AN5 & SKIP_SCAN_AN6 & SKIP_SCAN_AN7)
+#define ADCON3_SETTING_EN  (ADC_SAMPLE_TIME_11 & ADC_CONV_CLK_SYSTEM & ADC_CONV_CLK_4Tcy)
 
-#else
 /*
   ADC is not used
   Disable the ADC and set all pins to digital Inputs
 */
 
-#define ADCON1_SETTING  (ADC_MODULE_OFF & ADC_IDLE_STOP & ADC_FORMAT_INTG & ADC_CLK_AUTO & ADC_AUTO_SAMPLING_ON)
-#define ADCON2_SETTING  0x0000
-#define ADCON3_SETTING  0x0000
-#define ADCHS_SETTING   0x0000
-#define ADPCFG_SETTING  0xFFFF // All pins are digital Inputs
-#define ADCSSL_SETTING  0x0000
-
-#endif
-
-
+#define ADCON1_SETTING_DIS  (ADC_MODULE_OFF & ADC_IDLE_STOP & ADC_FORMAT_INTG & ADC_CLK_AUTO & ADC_AUTO_SAMPLING_ON)
+#define ADCON2_SETTING_DIS  0x0000
+#define ADCON3_SETTING_DIS  0x0000
+#define ADCHS_SETTING_DIS   0x0000
+#define ADPCFG_SETTING_DIS  0xFFFF // All pins are digital Inputs
+#define ADCSSL_SETTING_DIS  0x0000
 
 
 /*
@@ -246,6 +262,11 @@ typedef struct{
 #define TMR3_DELAY_2400US              24000                        
 #define TMR3_DELAY_200US                2000
 
+
+#define T3CON_VALUE_PS_1               (T3_ON & T3_IDLE_CON & T3_GATE_OFF & T3_PS_1_1   & T3_SOURCE_INT)
+#define T3CON_VALUE_PS_8               (T3_ON & T3_IDLE_CON & T3_GATE_OFF & T3_PS_1_8   & T3_SOURCE_INT)
+#define T3CON_VALUE_PS_64              (T3_ON & T3_IDLE_CON & T3_GATE_OFF & T3_PS_1_64  & T3_SOURCE_INT)
+#define T3CON_VALUE_PS_256             (T3_ON & T3_IDLE_CON & T3_GATE_OFF & T3_PS_1_256 & T3_SOURCE_INT)
 
 
 /* 
@@ -314,6 +335,7 @@ typedef struct{
 #define OLL_CPU_WARNING_LAMP                1
 #define OLL_ANALOG_READ_COMPLETE            1
 #define OLL_CPU_START                       1
+#define OLL_AFC_TRIGGER_ENABLE              1
 
 #define PIN_CPU_GUNDRIVER_OK_IN           _RA6
 #define PIN_CPU_RF_OK_IN                  _RA7

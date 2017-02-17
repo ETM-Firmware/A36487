@@ -1,5 +1,8 @@
 #include "A36487.h"
 
+
+void SetupT3PRFDeciHertz(unsigned int decihertz);
+
 #define ANALOG_STATE_WAIT_FOR_DATA_READ  10
 #define ANALOG_STATE_WAIT_FOR_PLC_SET    20
 #define ANALOG_STATE_WAIT_READ_COMPLETE  30
@@ -19,8 +22,6 @@ void UpdateAnalogDataFromPLC(void);
 void ReadAnalogRegister(void);
 int SendPersonalityToPLC(unsigned char id);
 
-
-unsigned char ReverseBits(unsigned char byte_to_reverse);
 
 #define DOSE_COMMAND_LOW_ENERGY   0  
 #define DOSE_COMMAND_HIGH_ENERGY  1
@@ -209,7 +210,6 @@ void DoStateMachine(void) {
 
 
 void InitializeA36487(void) {
-
   // Initialize Pins
   /* 
      DPARKER FIX
@@ -238,42 +238,82 @@ void InitializeA36487(void) {
   TRISF = A36487_TRISF_VALUE;
   TRISG = A36487_TRISG_VALUE;
 
+  // Setupt Timer 2 to generate 10mS Period
+  T2CON = T2CON_VALUE;
+  PR2 = PR2_VALUE_10mS;
+  TMR2 = 0;
+  _T2IF = 0;
+
+  // Setup Timer 1 to measure interpulse period.
+  T1CON = T1CON_VALUE;
+  PR1 = PR1_VALUE_400mS;
+
+  // Setupt Timer 3 to measure the Pulse Holdoff time to prevent over PRF  
+  T3CON = T3CON_VALUE;
+  PR3 = TMR3_DELAY_2400US;
+  TMR3 = 0;
+  _T3IF = 0;
+  
+  // Disable ADC Module
+  ADCON1 = ADCON1_SETTING_DIS;  
+  ADCON2 = ADCON2_SETTING_DIS;
+  ADCON3 = ADCON3_SETTING_DIS;
+  ADPCFG = ADPCFG_SETTING_DIS;
+  ADCSSL = ADCSSL_SETTING_DIS;
+  ADCHS  = ADCHS_SETTING_DIS;
+  
+
+
+  // ------------ Configure Interrupts for Different Operational Modes ------------ //
+  
+#ifdef __PLC_INTERFACE
+  // Enable ADC Convert
+  ADCON1 = ADCON1_SETTING_EN;  
+  ADCON2 = ADCON2_SETTING_EN;
+  ADCON3 = ADCON3_SETTING_EN;
+  ADPCFG = ADPCFG_SETTING_EN;
+  ADCSSL = ADCSSL_SETTING_EN;
+  ADCHS  = ADCHS_SETTING_EN;
+  _ADIF = 0;
+  _ADIE = 1;
+  _ADIP = 3;
+  _ADON = 1;
+#endif
+
+
+#ifdef __INTERNAL_TRIGGER
+  // Set up T3 Interrupt
+  _T3IE = 1;
+  _T3IP = 7;
+  T3CON = T3CON_VALUE;
+#endif
+
+
+#ifndef __INTERNAL_TRIGGER
   // Set up external INT1 */
   // This is the trigger interrupt
   _INT1IF = 0;		// Clear Interrupt flag
   _INT1IE = 1;		// Enable INT1 Interrupt
   _INT1EP = 0; 	        // Interrupt on rising edge
   _INT1IP = 7;		// Set interrupt to high priority
+
+  // Configure UART2 for communicating with Serial Dose Command
+  U2BRG = A36487_U2_BRG_VALUE;
+  U2STA = A36487_U2_STA_VALUE;
+  U2MODE = A36487_U2_MODE_VALUE;
+  uart2_next_byte = 0;  
+  _U2RXIF = 0;
+  _U2RXIP = 2;
+  _U2RXIE = 1;  
+#endif
+
+
+  // DPARKER Initialize the digital faults
   
-  // Setup Timer 1 to measure interpulse period.
-  T1CON = T1CON_VALUE;
-  PR1 = PR1_VALUE_400mS;
   
-  // Setupt Timer 2 to generate 10mS Period
-  T2CON = T2CON_VALUE;
-  PR2 = PR2_VALUE_10mS;
-  TMR2 = 0;
-  _T2IF = 0;
-  
-
-  // Setupt Timer 3 to measure the Pulse Holdoff time to prevent over PRF
-  T3CON = T3CON_VALUE;
-  PR3 = TMR3_DELAY_2400US;
-  TMR3 = 0;
-  _T3IF = 0;
-
-  // DPARKER - THIS INTERRUPT IS NOT USED WITH EXTERNAL TRIGGER - REMOVE????
-  // Set up the TM3 interrupt
-  _T3IF = 0;
-  _T3IE = 0;
-  _T3IP = 6;            // Set interrupt to next highest priority
-  
-
-
-
   // Read the personality module
   global_data_A36487.personality = ReadDosePersonality();
-
+  
   _STATUS_PERSONALITY_READ_COMPLETE = 0;
   if (global_data_A36487.personality != 0xFF) {
     _STATUS_PERSONALITY_READ_COMPLETE = 1;
@@ -283,7 +323,7 @@ void InitializeA36487(void) {
   _PERSONALITY_BIT_1 = 0;
   _PERSONALITY_BIT_2 = 0;
   _PERSONALITY_BIT_3 = 0;
-
+  
   if (global_data_A36487.personality & 0x0001) {
     _PERSONALITY_BIT_0 = 1;
   }
@@ -300,56 +340,33 @@ void InitializeA36487(void) {
     _PERSONALITY_BIT_3 = 1;
   }
 
-
   // Initialize the Slave Can Module
   _STATUS_CUSTOMER_X_RAY_DISABLE = 1;
   ETMEEPromUseInternal();
   ETMCanSlaveInitialize(CAN_PORT_1, FCY, ETM_CAN_ADDR_PULSE_SYNC_BOARD, _PIN_RG14, 4, _PIN_RG12, _PIN_RC1);
-  ETMCanSlaveLoadConfiguration(36487, 251, FIRMWARE_AGILE_REV, FIRMWARE_BRANCH, FIRMWARE_BRANCH_REV);
+  ETMCanSlaveLoadConfiguration(36487, 002, FIRMWARE_AGILE_REV, FIRMWARE_BRANCH, FIRMWARE_BRANCH_REV);
   
-
   // Configure SPI Module to write to the delay line sift Registers
   ConfigureSPI(ETM_SPI_PORT_2, ETM_DEFAULT_SPI_CON_VALUE, ETM_DEFAULT_SPI_CON2_VALUE, ETM_DEFAULT_SPI_STAT_VALUE, SPI_CLK_5_MBIT, FCY);
   // DPARKER CONSIDER WRITING MODULE FOR SHIFT REGISTER DELAY LINE
-
   
-  // Configure UART2 for communicating with Serial Dose Command
-  U2BRG = A36487_U2_BRG_VALUE;
-  U2STA = A36487_U2_STA_VALUE;
-  U2MODE = A36487_U2_MODE_VALUE;
-  uart2_next_byte = 0;  
-  _U2RXIF = 0;
-  _U2RXIP = 4;
-  _U2RXIE = 1;
-
-  
-  // Initialize the ADC
-  ADCON1 = ADCON1_SETTING;  
-  ADCON2 = ADCON2_SETTING;
-  ADCON3 = ADCON3_SETTING;
-  ADPCFG = ADPCFG_SETTING;
-  ADCSSL = ADCSSL_SETTING;
-  ADCHS  = ADCHS_SETTING;
-  _ADIF = 0;
-  _ADIE  = 1;
-  _ADON  = 1;
-  _ADIP  = 5;
-
   // Initialize the digital faults
   ETMDigitalInitializeInput(&global_data_A36487.pfn_fan_fault, ILL_PIN_PFN_FAULT, 50);
 
 #ifdef __PLC_INTERFACE
-  global_data_A36487.personality_sent_results = 1;
-  global_data_A36487.personality_send_attempts = 0;
-  while ((global_data_A36487.personality_sent_results) && (global_data_A36487.personality_send_attempts < 30)) {
-    global_data_A36487.personality_sent_results = SendPersonalityToPLC(global_data_A36487.personality);
-    global_data_A36487.personality_send_attempts++;
+  unsigned int personality_sent_results;
+  unsigned int personality_send_attempts;
+  
+  personality_sent_results = 1;
+  personality_send_attempts = 0;
+  while ((personality_sent_results) && (personality_send_attempts < 30)) {
+  personality_sent_results = SendPersonalityToPLC(global_data_A36487.personality);
+    personality_send_attempts++;
     ClrWdt();
-  }
+}
 #endif 
-
+  
   global_data_A36487.state_analog_data_read = ANALOG_STATE_WAIT_FOR_DATA_READ;
-
 }
 
 
@@ -400,6 +417,7 @@ unsigned char ReadDosePersonality() {
   return 0xFF;
 }
 
+
 void DoA36487(void) {
   unsigned long temp32;
 
@@ -414,11 +432,8 @@ void DoA36487(void) {
     global_data_A36487.trigger_complete = 0;
   }
 
-
   // ---------- UPDATE LOCAL FAULTS ------------------- //
   
-
-
   if ((global_data_A36487.control_state == STATE_FAULT) && ETMCanSlaveGetSyncMsgResetEnable()) {
     _FAULT_REGISTER = 0;
   }
@@ -438,7 +453,7 @@ void DoA36487(void) {
       _FAULT_KEYLOCK_OPEN = 0;
     }
   }
-
+  
   ETMDigitalUpdateInput(&global_data_A36487.pfn_fan_fault, PIN_CPU_PFN_OK_IN);
   
   if (ETMDigitalFilteredOutput(&global_data_A36487.pfn_fan_fault) == ILL_PIN_PFN_FAULT) {
@@ -459,7 +474,7 @@ void DoA36487(void) {
       _FAULT_RF_STATUS = 0;
     }
   }
-
+  
   if (PIN_XRAY_CMD_MISMATCH_IN == !ILL_XRAY_CMD_MISMATCH) {
     _FAULT_TIMING_MISMATCH = 1;
   } else {
@@ -525,6 +540,10 @@ void DoA36487(void) {
       // Set the rep rate to zero
       log_data_rep_rate_deci_hertz = 0;
     }
+    
+#ifdef __PLC_INTERFACE
+    UpdateAnalogDataFromPLC();
+#endif
   
     // Update the debugging Data
     ETMCanSlaveSetDebugRegister(0x0, global_data_A36487.control_state);
@@ -545,13 +564,9 @@ void DoA36487(void) {
     ETMCanSlaveSetDebugRegister(0xC, analog_interface_faults);
     ETMCanSlaveSetDebugRegister(0xD, analog_read_count);
     ETMCanSlaveSetDebugRegister(0xE, global_data_A36487.state_analog_data_read);
-    ETMCanSlaveSetDebugRegister(0xF, global_data_A36487.personality_send_attempts);
-    UpdateAnalogDataFromPLC();
+    //ETMCanSlaveSetDebugRegister(0xF, global_data_A36487.personality_send_attempts);
   }
 }
-
-
-
 
 
 void UpdateAnalogDataFromPLC(void) {
@@ -740,6 +755,15 @@ void DoPostTriggerProcess(void) {
   ProgramShiftRegistersGrid(global_data_A36487.this_pulse_width);
   _U2RXIE = 1;
 
+
+  PIN_AFC_TRIGGER_ENABLE_OUT = OLL_AFC_TRIGGER_ENABLE;
+
+#ifdef __TRIGGER_AFC_HIGH_ONLY
+  if ((GetThisPulseLevel() != DOSE_COMMAND_HIGH_ENERGY) && (PIN_HIGH_MODE_IN = ILL_MODE_BIT_SELECTED)) {
+    PIN_AFC_TRIGGER_ENABLE_OUT = !OLL_AFC_TRIGGER_ENABLE;
+  }
+#endif  
+
   global_data_A36487.period_filtered = RCFilterNTau(global_data_A36487.period_filtered, global_data_A36487.last_period, RC_FILTER_4_TAU);  // Update the PRF
 
   if (ETMCanSlaveGetSyncMsgHighSpeedLogging()) {
@@ -869,292 +893,8 @@ unsigned char InterpolateValue(unsigned int val_0, unsigned int val_1, unsigned 
 }
 
 
-void __attribute__((interrupt(__save__(CORCON,SR)), no_auto_psv)) _U2RXInterrupt(void) {
-  unsigned int crc_check;
-  unsigned char data;
-  _U2RXIF = 0;
-  debug_uart2_int_count++;
-  while (U2STAbits.URXDA) {
-    data = U2RXREG;
-    //uart2_input_buffer[uart2_next_byte] = ReverseBits(data);
-    uart2_input_buffer[uart2_next_byte] = data;
-    uart2_next_byte++;
-    uart2_next_byte &= 0x000F;
-  }
-  
-  if (uart2_next_byte >= 6) {
-    crc_check   = uart2_input_buffer[5];
-    crc_check <<= 8;
-    crc_check  += uart2_input_buffer[4];
-    debug_uart2_message_count++;
-    if (ETMCRC16(&uart2_input_buffer[0],4) == crc_check) {
-      if (uart2_input_buffer[1] & 0x01) {
-	global_data_A36487.next_pulse_level = DOSE_COMMAND_LOW_ENERGY;
-      } else {
-	global_data_A36487.next_pulse_level = DOSE_COMMAND_HIGH_ENERGY;
-      }
-      
-      trigger_width = uart2_input_buffer[0];
-      trigger_width_filtered = uart2_input_buffer[0];
-      ProgramShiftRegistersGrid(uart2_input_buffer[0]);
-      global_data_A36487.message_received = 1;
-      global_data_A36487.message_received_count++;
-    }
-    uart2_next_byte = 0;
-  }
-}
-
-unsigned char ReverseBits(unsigned char byte_to_reverse) {
-  unsigned char output = 0;
-  if (byte_to_reverse & 0b00000001) {
-    output |= 0b10000000;
-  }
-
-  if (byte_to_reverse & 0b00000010) {
-    output |= 0b01000000;
-  }
-
-  if (byte_to_reverse & 0b00000100) {
-    output |= 0b00100000;
-  }
-
-  if (byte_to_reverse & 0b00001000) {
-    output |= 0b00010000;
-  }
-
-  if (byte_to_reverse & 0b00010000) {
-    output |= 0b00001000;
-  }
-
-  if (byte_to_reverse & 0b00100000) {
-    output |= 0b00000100;
-  }
-
-  if (byte_to_reverse & 0b01000000) {
-    output |= 0b00000010;
-  }
-  
-  if (byte_to_reverse & 0b10000000) {
-    output |= 0b00000001;
-  }
-
-  return output;
-}
 
 
-
-#ifndef __INTERNAL_TRIGGER
-// External Trigger
-
-void __attribute__((interrupt, shadow, no_auto_psv)) _INT1Interrupt(void) {
-  unsigned int previous_level;
-  unsigned int previous_width;
-
-  // A trigger was recieved
-  
-  // First check that the pulse is valid
-  // It takes at least 4 clock cycles to get here
-  // IF the trigger is valid and we are in the x-ray state, send out the start pulse
-  PIN_40US_TEST_POINT = 1;
-  if (PIN_TRIGGER_IN == ILL_TRIGGER_ACTIVE) {
-    // The Trigger Pulse is Valid
-    if (_T3IF) {
-      // The minimum period between pulses has passed
-      if ((global_data_A36487.control_state == STATE_X_RAY_ENABLE)) {
-	PIN_CPU_START_OUT = OLL_CPU_START;
-	// Start The Holdoff Timer for the next pulse
-	TMR3 = 0;
-	_T3IF = 0;
-      }
-      // Calculate the Trigger PRF
-      // TMR1 is used to time the time between INT1 interrupts
-      global_data_A36487.last_period = TMR1;
-      TMR1 = 0;
-      if (_T1IF) {
-	// The timer exceed it's period of 400mS - (Will happen if the PRF is less than 2.5Hz)
-	global_data_A36487.last_period = 62501;  // This will indicate that the PRF is Less than 2.5Hz
-      }
-      _T1IF = 0;
-      
-      // Prepare for future pulses
-      previous_level = global_data_A36487.this_pulse_level;
-      previous_width = global_data_A36487.this_pulse_width;
-      
-      global_data_A36487.this_pulse_level = global_data_A36487.next_pulse_level;
-      global_data_A36487.this_pulse_width = global_data_A36487.next_pulse_width;
-      
-      global_data_A36487.next_pulse_level = previous_level;
-      global_data_A36487.next_pulse_width = previous_width;
-      
-      
-      global_data_A36487.trigger_complete = 1;
-      uart2_next_byte = 0;
-      
-
-      if (global_data_A36487.message_received == 0) {
-	global_data_A36487.bad_message_count++;
-	global_data_A36487.total_missed_messages++;
-      } else {
-	if (global_data_A36487.bad_message_count) {
-	  global_data_A36487.bad_message_count--;
-	}
-      }
-      global_data_A36487.message_received = 0;
-
-
-      // DPARKER - REDUCE THIS DELAY TO ACCOUNT FOR THE TIME IT TAKES TO GET HERE
-      __delay32(60);  // Delay 6 uS
-    }
-  }
-  PIN_CPU_START_OUT = !OLL_CPU_START;
-  
-  _INT1IF = 0;
-  PIN_40US_TEST_POINT = 0;
-}
-
-
-#else
-// Trigger is generated internally
-// DPARKER - FIGUER THIS OUT
-void __attribute__((interrupt, no_auto_psv)) _T3Interrupt(void) {
-
-  if ((global_data_A36487.control_state == STATE_X_RAY_ENABLE)) {
-    PIN_CPU_START_OUT == OLL_CPU_START;
-    __delay32(60);  // Delay 6 uS
-  }
-  
-  PIN_CPU_START_OUT == !OLL_CPU_START;
-  _T3IF = 0;
-}
-
-#endif
-
-
-void __attribute__((interrupt, no_auto_psv)) _DefaultInterrupt(void) {
-    Nop();
-    Nop();
-    __asm__ ("Reset");
-}
-
-
-// Executes the CAN Commands
-void ETMCanSlaveExecuteCMDBoardSpecific(ETMCanMessage* message_ptr) {
-#ifndef __PLC_INTERFACE
-  unsigned int index_word;
-  //unsigned int temp;
-  index_word = message_ptr->word3;
-  switch (index_word) 
-    {
-      /*
-	Place all board specific commands here
-      */
-            
-    case ETM_CAN_REGISTER_PULSE_SYNC_SET_1_HIGH_ENERGY_TIMING_REG_0:
-      *(unsigned int*)&grid_start_high3 = message_ptr->word2;
-      *(unsigned int*)&grid_start_high1 = message_ptr->word1;
-      *(unsigned int*)&dose_sample_delay_high = message_ptr->word0;
-      global_data_A36487.counter_config_received |= 0b0001;
-      break;
-
-    case ETM_CAN_REGISTER_PULSE_SYNC_SET_1_HIGH_ENERGY_TIMING_REG_1:
-      *(unsigned int*)&grid_stop_high3 = message_ptr->word2;
-      *(unsigned int*)&grid_stop_high1 = message_ptr->word1;
-      *(unsigned int*)&magnetron_current_sample_delay_high = message_ptr->word0;
-      global_data_A36487.counter_config_received |=0b0010;
-      break;
-
-    case ETM_CAN_REGISTER_PULSE_SYNC_SET_1_LOW_ENERGY_TIMING_REG_0:
-      *(unsigned int*)&grid_start_low3 = message_ptr->word2;
-      *(unsigned int*)&grid_start_low1 = message_ptr->word1;
-      *(unsigned int*)&dose_sample_delay_low = message_ptr->word0;
-      global_data_A36487.counter_config_received |= 0b0100;
-      break;
-
-    case ETM_CAN_REGISTER_PULSE_SYNC_SET_1_LOW_ENERGY_TIMING_REG_1:
-      *(unsigned int*)&grid_stop_low3 = message_ptr->word2;
-      *(unsigned int*)&grid_stop_low1 = message_ptr->word1;
-      *(unsigned int*)&magnetron_current_sample_delay_low = message_ptr->word0;
-      global_data_A36487.counter_config_received |= 0b1000;
-      break;
-
-    case ETM_CAN_REGISTER_PULSE_SYNC_SET_1_CUSTOMER_LED_OUTPUT:
-      global_data_A36487.led_state = message_ptr->word0;
-      break;
-      
-    default:
-      ETMCanSlaveIncrementInvalidIndex();
-      break;
-    }
-#endif
-}
-
-void __attribute__((interrupt, no_auto_psv)) _ADCInterrupt(void) {
-  _ADIF = 0;
-  // Copy Data From Buffer to RAM
-  if (_BUFS) {
-    // read ADCBUF 0-7
-    global_data_A36487.analog_1.adc_accumulator += ADCBUF0;
-    global_data_A36487.analog_2.adc_accumulator += ADCBUF1;
-    global_data_A36487.analog_3.adc_accumulator += ADCBUF2;
-    global_data_A36487.analog_4.adc_accumulator += ADCBUF3;
-    global_data_A36487.analog_5.adc_accumulator += ADCBUF4;
-    global_data_A36487.analog_6.adc_accumulator += ADCBUF5;
-    global_data_A36487.analog_7.adc_accumulator += ADCBUF6;
-    global_data_A36487.analog_8.adc_accumulator += ADCBUF7;
-  } else {
-    // read ADCBUF 8-15
-    global_data_A36487.analog_1.adc_accumulator += ADCBUF8;
-    global_data_A36487.analog_2.adc_accumulator += ADCBUF9;
-    global_data_A36487.analog_3.adc_accumulator += ADCBUFA;
-    global_data_A36487.analog_4.adc_accumulator += ADCBUFB;
-    global_data_A36487.analog_5.adc_accumulator += ADCBUFC;
-    global_data_A36487.analog_6.adc_accumulator += ADCBUFD;
-    global_data_A36487.analog_7.adc_accumulator += ADCBUFE;
-    global_data_A36487.analog_8.adc_accumulator += ADCBUFF;
-  }
-  
-  global_data_A36487.accumulator_counter++ ;
-  
-  if (global_data_A36487.accumulator_counter >= 128) {
-
-    // convert accumulators to 16 bit integer
-    global_data_A36487.analog_1.adc_accumulator >>= 3;
-    global_data_A36487.analog_2.adc_accumulator >>= 3;
-    global_data_A36487.analog_3.adc_accumulator >>= 3;
-    global_data_A36487.analog_4.adc_accumulator >>= 3;
-    global_data_A36487.analog_5.adc_accumulator >>= 3;
-    global_data_A36487.analog_6.adc_accumulator >>= 3;
-    global_data_A36487.analog_7.adc_accumulator >>= 3;
-    global_data_A36487.analog_8.adc_accumulator >>= 3;
-
-    // Store the values
-    global_data_A36487.analog_1.filtered_adc_reading = global_data_A36487.analog_1.adc_accumulator;
-    global_data_A36487.analog_2.filtered_adc_reading = global_data_A36487.analog_2.adc_accumulator;
-    global_data_A36487.analog_3.filtered_adc_reading = global_data_A36487.analog_3.adc_accumulator;
-    global_data_A36487.analog_4.filtered_adc_reading = global_data_A36487.analog_4.adc_accumulator;
-    global_data_A36487.analog_5.filtered_adc_reading = global_data_A36487.analog_5.adc_accumulator;
-    global_data_A36487.analog_6.filtered_adc_reading = global_data_A36487.analog_6.adc_accumulator;
-    global_data_A36487.analog_7.filtered_adc_reading = global_data_A36487.analog_7.adc_accumulator;
-    global_data_A36487.analog_8.filtered_adc_reading = global_data_A36487.analog_8.adc_accumulator;
-
-    // Clear the accumlators
-    global_data_A36487.analog_1.adc_accumulator = 0;
-    global_data_A36487.analog_2.adc_accumulator = 0;
-    global_data_A36487.analog_3.adc_accumulator = 0;
-    global_data_A36487.analog_4.adc_accumulator = 0;
-    global_data_A36487.analog_5.adc_accumulator = 0;
-    global_data_A36487.analog_6.adc_accumulator = 0;
-    global_data_A36487.analog_7.adc_accumulator = 0;
-    global_data_A36487.analog_8.adc_accumulator = 0;
-    
-    global_data_A36487.accumulator_counter = 0;
-  }
-}
-
-
-
-
-// DPARKER - THIS STILL NEEDS A LOT OF WORK
 int SendPersonalityToPLC(unsigned char id) {
 
   //The PIC will use the gun driver,PFN, and RF faults to the PLC
@@ -1254,3 +994,311 @@ int SendPersonalityToPLC(unsigned char id) {
 
   return ret;       //Communication Successful = 0
 }
+
+
+void SetupT3PRFDeciHertz(unsigned int decihertz) {
+#ifdef __INTERNAL_TRIGGER
+  unsigned long period_long;
+  unsigned int period_int;
+  
+  // decihertz is the requested PRF in decihertz
+  if (decihertz <= MIN_REQUESTED_PRF_DECIHERTZ) {
+    decihertz = MIN_REQUESTED_PRF_DECIHERTZ;
+  }
+  
+  if (decihertz >= MAX_REQUESTED_PRF_DECIHERTZ) {
+    decihertz = MAX_REQUESTED_PRF_DECIHERTZ;
+  }
+  
+  period_long = 100000000;
+  period_long /= decihertz;
+
+  if (decihertz <= 20) {
+    T3CON = T3CON_VALUE_PS_256;
+    period_long = period_long >> 8;
+  } else if (decihertz <= 190) {
+    T3CON = T3CON_VALUE_PS_64;
+    period_long = period_long >> 6;
+  } else if (decihertz <= 1520) {
+    T3CON = T3CON_VALUE_PS_8;
+    period_long = period_long >> 3;
+  } else {
+    T3CON = T3CON_VALUE_PS_1;
+  }
+  
+  if (period_long >= 0x0000FFFF) {
+    period_long = 0x0000FFFF;
+  }
+  
+  period_int = period_long;
+  PR3 = period_int;
+
+#endif
+}
+
+
+
+
+
+
+// Executes the CAN Commands
+void ETMCanSlaveExecuteCMDBoardSpecific(ETMCanMessage* message_ptr) {
+#ifndef __PLC_INTERFACE
+  unsigned int index_word;
+  //unsigned int temp;
+  index_word = message_ptr->word3;
+  switch (index_word) 
+    {
+      /*
+	Place all board specific commands here
+      */
+            
+    case ETM_CAN_REGISTER_PULSE_SYNC_SET_1_HIGH_ENERGY_TIMING_REG_0:
+      *(unsigned int*)&grid_start_high3 = message_ptr->word2;
+      *(unsigned int*)&grid_start_high1 = message_ptr->word1;
+      *(unsigned int*)&dose_sample_delay_high = message_ptr->word0;
+      global_data_A36487.counter_config_received |= 0b0001;
+      break;
+
+    case ETM_CAN_REGISTER_PULSE_SYNC_SET_1_HIGH_ENERGY_TIMING_REG_1:
+      *(unsigned int*)&grid_stop_high3 = message_ptr->word2;
+      *(unsigned int*)&grid_stop_high1 = message_ptr->word1;
+      *(unsigned int*)&magnetron_current_sample_delay_high = message_ptr->word0;
+      global_data_A36487.counter_config_received |=0b0010;
+      break;
+
+    case ETM_CAN_REGISTER_PULSE_SYNC_SET_1_LOW_ENERGY_TIMING_REG_0:
+      *(unsigned int*)&grid_start_low3 = message_ptr->word2;
+      *(unsigned int*)&grid_start_low1 = message_ptr->word1;
+      *(unsigned int*)&dose_sample_delay_low = message_ptr->word0;
+      global_data_A36487.counter_config_received |= 0b0100;
+      break;
+
+    case ETM_CAN_REGISTER_PULSE_SYNC_SET_1_LOW_ENERGY_TIMING_REG_1:
+      *(unsigned int*)&grid_stop_low3 = message_ptr->word2;
+      *(unsigned int*)&grid_stop_low1 = message_ptr->word1;
+      *(unsigned int*)&magnetron_current_sample_delay_low = message_ptr->word0;
+      global_data_A36487.counter_config_received |= 0b1000;
+
+      break;
+
+    case ETM_CAN_REGISTER_PULSE_SYNC_SET_1_CUSTOMER_LED_OUTPUT:
+      //global_data_A36487.led_state = message_ptr->word0;
+      SetupT3PRFDeciHertz(message_ptr->word2);
+      break;
+      
+    default:
+      ETMCanSlaveIncrementInvalidIndex();
+      break;
+    }
+#endif
+}
+
+
+
+// -------------------------- INTERRUPTS ------------------------ //
+
+
+// Trigger is generated internally
+void __attribute__((interrupt, no_auto_psv)) _T3Interrupt(void) {
+#ifdef __INTERNAL_TRIGGER
+  if ((global_data_A36487.control_state == STATE_X_RAY_ENABLE)) {
+    PIN_CPU_START_OUT == OLL_CPU_START;
+    __delay32(60);  // Delay 6 uS
+  }
+  
+  PIN_CPU_START_OUT == !OLL_CPU_START;
+  
+  global_data_A36487.last_period = TMR1;
+  TMR1 = 0;
+  if (_T1IF) {
+    // The timer exceed it's period of 400mS - (Will happen if the PRF is less than 2.5Hz)
+    global_data_A36487.last_period = 62501;  // This will indicate that the PRF is Less than 2.5Hz
+  }
+  _T1IF = 0;
+  
+  global_data_A36487.trigger_complete = 1;
+#endif
+  _T3IF = 0;
+}
+
+
+
+// External Trigger
+void __attribute__((interrupt, shadow, no_auto_psv)) _INT1Interrupt(void) {
+#ifndef __INTERNAL_TRIGGER
+  unsigned int previous_level;
+  unsigned int previous_width;
+
+  // A trigger was recieved
+  
+  // First check that the pulse is valid
+  // It takes at least 4 clock cycles to get here
+  // IF the trigger is valid and we are in the x-ray state, send out the start pulse
+  if (PIN_TRIGGER_IN == ILL_TRIGGER_ACTIVE) {
+    // The Trigger Pulse is Valid
+    if (_T3IF) {
+      // The minimum period between pulses has passed
+      if ((global_data_A36487.control_state == STATE_X_RAY_ENABLE)) {
+	PIN_CPU_START_OUT = OLL_CPU_START;
+	// Start The Holdoff Timer for the next pulse
+	TMR3 = 0;
+	_T3IF = 0;
+      }
+      // Calculate the Trigger PRF
+      // TMR1 is used to time the time between INT1 interrupts
+      global_data_A36487.last_period = TMR1;
+      TMR1 = 0;
+      if (_T1IF) {
+	// The timer exceed it's period of 400mS - (Will happen if the PRF is less than 2.5Hz)
+	global_data_A36487.last_period = 62501;  // This will indicate that the PRF is Less than 2.5Hz
+      }
+      _T1IF = 0;
+      
+      // Prepare for future pulses
+      previous_level = global_data_A36487.this_pulse_level;
+      previous_width = global_data_A36487.this_pulse_width;
+      
+      global_data_A36487.this_pulse_level = global_data_A36487.next_pulse_level;
+      global_data_A36487.this_pulse_width = global_data_A36487.next_pulse_width;
+      
+      global_data_A36487.next_pulse_level = previous_level;
+      global_data_A36487.next_pulse_width = previous_width;
+      
+      
+      global_data_A36487.trigger_complete = 1;
+      uart2_next_byte = 0;
+      
+
+      if (global_data_A36487.message_received == 0) {
+	global_data_A36487.bad_message_count++;
+	global_data_A36487.total_missed_messages++;
+      } else {
+	if (global_data_A36487.bad_message_count) {
+	  global_data_A36487.bad_message_count--;
+	}
+      }
+      global_data_A36487.message_received = 0;
+
+
+      // DPARKER - REDUCE THIS DELAY TO ACCOUNT FOR THE TIME IT TAKES TO GET HERE
+      __delay32(60);  // Delay 6 uS
+    }
+  }
+  PIN_CPU_START_OUT = !OLL_CPU_START;
+#endif
+  _INT1IF = 0;
+}
+  
+  
+void __attribute__((interrupt(__save__(CORCON,SR)), no_auto_psv)) _U2RXInterrupt(void) {
+#ifndef __INTERNAL_TRIGGER
+  unsigned int crc_check;
+  unsigned char data;
+  debug_uart2_int_count++;
+  while (U2STAbits.URXDA) {
+    data = U2RXREG;
+    uart2_input_buffer[uart2_next_byte] = data;
+    uart2_next_byte++;
+    uart2_next_byte &= 0x000F;
+  }
+  
+  if (uart2_next_byte >= 6) {
+    crc_check   = uart2_input_buffer[5];
+    crc_check <<= 8;
+    crc_check  += uart2_input_buffer[4];
+    debug_uart2_message_count++;
+    if (ETMCRC16(&uart2_input_buffer[0],4) == crc_check) {
+      if (uart2_input_buffer[1] & 0x01) {
+	global_data_A36487.next_pulse_level = DOSE_COMMAND_LOW_ENERGY;
+      } else {
+	global_data_A36487.next_pulse_level = DOSE_COMMAND_HIGH_ENERGY;
+      }
+      
+      trigger_width = uart2_input_buffer[0];
+      trigger_width_filtered = uart2_input_buffer[0];
+      ProgramShiftRegistersGrid(uart2_input_buffer[0]);
+      global_data_A36487.message_received = 1;
+      global_data_A36487.message_received_count++;
+    }
+    uart2_next_byte = 0;
+  }
+#endif
+  _U2RXIF = 0;
+}
+
+
+void __attribute__((interrupt, no_auto_psv)) _ADCInterrupt(void) {
+#ifdef __PLC_INTERFACE
+  // Copy Data From Buffer to RAM
+  if (_BUFS) {
+    // read ADCBUF 0-7
+    global_data_A36487.analog_1.adc_accumulator += ADCBUF0;
+    global_data_A36487.analog_2.adc_accumulator += ADCBUF1;
+    global_data_A36487.analog_3.adc_accumulator += ADCBUF2;
+    global_data_A36487.analog_4.adc_accumulator += ADCBUF3;
+    global_data_A36487.analog_5.adc_accumulator += ADCBUF4;
+    global_data_A36487.analog_6.adc_accumulator += ADCBUF5;
+    global_data_A36487.analog_7.adc_accumulator += ADCBUF6;
+    global_data_A36487.analog_8.adc_accumulator += ADCBUF7;
+  } else {
+    // read ADCBUF 8-15
+    global_data_A36487.analog_1.adc_accumulator += ADCBUF8;
+    global_data_A36487.analog_2.adc_accumulator += ADCBUF9;
+    global_data_A36487.analog_3.adc_accumulator += ADCBUFA;
+    global_data_A36487.analog_4.adc_accumulator += ADCBUFB;
+    global_data_A36487.analog_5.adc_accumulator += ADCBUFC;
+    global_data_A36487.analog_6.adc_accumulator += ADCBUFD;
+    global_data_A36487.analog_7.adc_accumulator += ADCBUFE;
+    global_data_A36487.analog_8.adc_accumulator += ADCBUFF;
+  }
+  
+  global_data_A36487.accumulator_counter++ ;
+  
+  if (global_data_A36487.accumulator_counter >= 128) {
+
+    // convert accumulators to 16 bit integer
+    global_data_A36487.analog_1.adc_accumulator >>= 3;
+    global_data_A36487.analog_2.adc_accumulator >>= 3;
+    global_data_A36487.analog_3.adc_accumulator >>= 3;
+    global_data_A36487.analog_4.adc_accumulator >>= 3;
+    global_data_A36487.analog_5.adc_accumulator >>= 3;
+    global_data_A36487.analog_6.adc_accumulator >>= 3;
+    global_data_A36487.analog_7.adc_accumulator >>= 3;
+    global_data_A36487.analog_8.adc_accumulator >>= 3;
+
+    // Store the values
+    global_data_A36487.analog_1.filtered_adc_reading = global_data_A36487.analog_1.adc_accumulator;
+    global_data_A36487.analog_2.filtered_adc_reading = global_data_A36487.analog_2.adc_accumulator;
+    global_data_A36487.analog_3.filtered_adc_reading = global_data_A36487.analog_3.adc_accumulator;
+    global_data_A36487.analog_4.filtered_adc_reading = global_data_A36487.analog_4.adc_accumulator;
+    global_data_A36487.analog_5.filtered_adc_reading = global_data_A36487.analog_5.adc_accumulator;
+    global_data_A36487.analog_6.filtered_adc_reading = global_data_A36487.analog_6.adc_accumulator;
+    global_data_A36487.analog_7.filtered_adc_reading = global_data_A36487.analog_7.adc_accumulator;
+    global_data_A36487.analog_8.filtered_adc_reading = global_data_A36487.analog_8.adc_accumulator;
+
+    // Clear the accumlators
+    global_data_A36487.analog_1.adc_accumulator = 0;
+    global_data_A36487.analog_2.adc_accumulator = 0;
+    global_data_A36487.analog_3.adc_accumulator = 0;
+    global_data_A36487.analog_4.adc_accumulator = 0;
+    global_data_A36487.analog_5.adc_accumulator = 0;
+    global_data_A36487.analog_6.adc_accumulator = 0;
+    global_data_A36487.analog_7.adc_accumulator = 0;
+    global_data_A36487.analog_8.adc_accumulator = 0;
+    
+    global_data_A36487.accumulator_counter = 0;
+  }
+#endif
+  _ADIF = 0;
+}
+
+
+void __attribute__((interrupt, no_auto_psv)) _DefaultInterrupt(void) {
+    Nop();
+    Nop();
+    __asm__ ("Reset");
+}
+
+
+

@@ -1,0 +1,12 @@
+#ifndef __A36487_CONFIG_h
+#define __A36487_CONFIG_h
+
+
+
+#define MIN_REQUESTED_PRF_DECIHERTZ   10
+#define MAX_REQUESTED_PRF_DECIHERTZ   8000
+
+
+
+
+#endif
