@@ -336,6 +336,8 @@ typedef struct{
 #define OLL_ANALOG_READ_COMPLETE            1
 #define OLL_CPU_START                       1
 #define OLL_AFC_TRIGGER_ENABLE              1
+#define OLL_ENERGY_LEVEL_HIGH               1
+#define OLL_POLARITY_NORMAL                 0
 
 #define PIN_CPU_GUNDRIVER_OK_IN           _RA6
 #define PIN_CPU_RF_OK_IN                  _RA7
@@ -357,7 +359,7 @@ typedef struct{
 
 #define ILL_CUSTOMER_BEAM_ENABLE          1
 #define ILL_CUSTOMER_XRAY_ON              1
-#define ILL_MODE_BIT_SELECTED             0
+#define ILL_MODE_BIT_SELECTED             1
 #define ILL_KEY_LOCK_FAULT                1
 #define ILL_PANEL_OPEN                    1
 #define ILL_PIN_RF_FAULT                  0

@@ -228,6 +228,11 @@ void InitializeA36487(void) {
   */
 
 
+  PIN_GUN_POLARITY_OUT  = !OLL_POLARITY_NORMAL;
+  PIN_HVPS_POLARITY_OUT = OLL_POLARITY_NORMAL;
+  PIN_RF_POLARITY_OUT   = OLL_POLARITY_NORMAL;
+
+
   PIN_ANALOG_READ_COMPLETE_OUT = OLL_ANALOG_READ_COMPLETE;
 
   // Initialize all I/O Registers
@@ -750,10 +755,25 @@ void DoPostTriggerProcess(void) {
   _U2RXIE = 1;
 
   global_data_A36487.pulses_on++; // This counts the pulses
-  
+
+  /*
   _U2RXIE = 0;  // You must disable the UART interrupt while writting or values could be bashed based on timing
   ProgramShiftRegistersGrid(global_data_A36487.this_pulse_width);
   _U2RXIE = 1;
+  */
+
+  if (GetThisPulseLevel() == DOSE_COMMAND_HIGH_ENERGY) {
+    PIN_ENERGY_CPU_OUT = OLL_ENERGY_LEVEL_HIGH;
+  } else {
+    PIN_ENERGY_CPU_OUT = !OLL_ENERGY_LEVEL_HIGH;
+  }  
+    
+#ifdef __PLC_INTERFACE
+  PIN_GUN_POLARITY_OUT = !OLL_POLARITY_NORMAL;
+  if (PIN_LOW_MODE_IN == PIN_HIGH_MODE_IN) {
+    PIN_GUN_POLARITY_OUT = OLL_POLARITY_NORMAL;
+  }
+#endif
 
 
   PIN_AFC_TRIGGER_ENABLE_OUT = OLL_AFC_TRIGGER_ENABLE;
@@ -1168,7 +1188,9 @@ void __attribute__((interrupt, shadow, no_auto_psv)) _INT1Interrupt(void) {
       
       global_data_A36487.trigger_complete = 1;
       uart2_next_byte = 0;
-      
+      if (U2STAbits.OERR) {
+	U2STAbits.OERR = 0;
+      }
 
       if (global_data_A36487.message_received == 0) {
 	global_data_A36487.bad_message_count++;
@@ -1204,6 +1226,7 @@ void __attribute__((interrupt(__save__(CORCON,SR)), no_auto_psv)) _U2RXInterrupt
   }
   
   if (uart2_next_byte >= 6) {
+    PIN_40US_TEST_POINT = 1;
     crc_check   = uart2_input_buffer[5];
     crc_check <<= 8;
     crc_check  += uart2_input_buffer[4];
@@ -1224,6 +1247,7 @@ void __attribute__((interrupt(__save__(CORCON,SR)), no_auto_psv)) _U2RXInterrupt
     uart2_next_byte = 0;
   }
 #endif
+  PIN_40US_TEST_POINT = 0;
   _U2RXIF = 0;
 }
 
