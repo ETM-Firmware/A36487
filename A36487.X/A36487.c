@@ -1,6 +1,9 @@
 #include "A36487.h"
 
 
+unsigned int debug_pulse_level_save;
+
+
 void SetupT3PRFDeciHertz(unsigned int decihertz);
 
 #define ANALOG_STATE_WAIT_FOR_DATA_READ  10
@@ -308,7 +311,7 @@ void InitializeA36487(void) {
   U2MODE = A36487_U2_MODE_VALUE;
   uart2_next_byte = 0;  
   _U2RXIF = 0;
-  _U2RXIP = 2;
+  _U2RXIP = 6;
   _U2RXIE = 1;  
 #endif
 
@@ -365,10 +368,10 @@ void InitializeA36487(void) {
   personality_sent_results = 1;
   personality_send_attempts = 0;
   while ((personality_sent_results) && (personality_send_attempts < 30)) {
-  personality_sent_results = SendPersonalityToPLC(global_data_A36487.personality);
+    personality_sent_results = SendPersonalityToPLC(global_data_A36487.personality);
     personality_send_attempts++;
     ClrWdt();
-}
+  }
 #endif 
   
   global_data_A36487.state_analog_data_read = ANALOG_STATE_WAIT_FOR_DATA_READ;
@@ -437,6 +440,12 @@ void DoA36487(void) {
     global_data_A36487.trigger_complete = 0;
   }
 
+  if ((global_data_A36487.trigger_width_update_ready) && (global_data_A36487.trigger_complete == 0)) {
+    ProgramShiftRegistersGrid(trigger_width_filtered);
+    global_data_A36487.trigger_width_update_ready = 0;
+    PIN_40US_TEST_POINT = 0;
+  }
+  
   // ---------- UPDATE LOCAL FAULTS ------------------- //
   
   if ((global_data_A36487.control_state == STATE_FAULT) && ETMCanSlaveGetSyncMsgResetEnable()) {
@@ -470,7 +479,7 @@ void DoA36487(void) {
   }
   
   // DPARKER - ADD FILTER AND FAULT FOR GUN FAULT
-
+  
 
   if (PIN_CPU_RF_OK_IN == ILL_PIN_RF_FAULT) {
     _FAULT_RF_STATUS = 1;
@@ -549,12 +558,12 @@ void DoA36487(void) {
 #ifdef __PLC_INTERFACE
     UpdateAnalogDataFromPLC();
 #endif
-  
+    
     // Update the debugging Data
     ETMCanSlaveSetDebugRegister(0x0, global_data_A36487.control_state);
     ETMCanSlaveSetDebugRegister(0x1, global_data_A36487.total_missed_messages);
     ETMCanSlaveSetDebugRegister(0x2, global_data_A36487.message_received_count);
-
+    
     ETMCanSlaveSetDebugRegister(0x3, debug_uart2_message_count);
     ETMCanSlaveSetDebugRegister(0x4, debug_uart2_int_count);
     ETMCanSlaveSetDebugRegister(0x5, grid_start_high1);
@@ -750,31 +759,17 @@ void DoStartupLEDs(void) {
 void DoPostTriggerProcess(void) {
   ETMCanSlavePulseSyncSendNextPulseLevel(GetThisPulseLevel(), global_data_A36487.pulses_on, log_data_rep_rate_deci_hertz);
   
-  _U2RXIE = 0;  // You must disable the UART interrupt while writting or values could be bashed based on timing
   ProgramShiftRegistersDelays();  // Load the shift registers
-  _U2RXIE = 1;
 
   global_data_A36487.pulses_on++; // This counts the pulses
 
-  /*
-  _U2RXIE = 0;  // You must disable the UART interrupt while writting or values could be bashed based on timing
   ProgramShiftRegistersGrid(global_data_A36487.this_pulse_width);
-  _U2RXIE = 1;
-  */
 
   if (GetThisPulseLevel() == DOSE_COMMAND_HIGH_ENERGY) {
     PIN_ENERGY_CPU_OUT = OLL_ENERGY_LEVEL_HIGH;
   } else {
     PIN_ENERGY_CPU_OUT = !OLL_ENERGY_LEVEL_HIGH;
   }  
-    
-#ifdef __PLC_INTERFACE
-  PIN_GUN_POLARITY_OUT = !OLL_POLARITY_NORMAL;
-  if (PIN_LOW_MODE_IN == PIN_HIGH_MODE_IN) {
-    PIN_GUN_POLARITY_OUT = OLL_POLARITY_NORMAL;
-  }
-#endif
-
 
   PIN_AFC_TRIGGER_ENABLE_OUT = OLL_AFC_TRIGGER_ENABLE;
 
@@ -792,7 +787,7 @@ void DoPostTriggerProcess(void) {
 			    (global_data_A36487.pulses_on - 1),
 			    *(unsigned int*)&trigger_width,
 			    *(unsigned int*)&data_grid_start,
-			    log_data_rep_rate_deci_hertz);
+			    debug_pulse_level_save);
   }
 }
 
@@ -1165,16 +1160,9 @@ void __attribute__((interrupt, shadow, no_auto_psv)) _INT1Interrupt(void) {
 	TMR3 = 0;
 	_T3IF = 0;
       }
-      // Calculate the Trigger PRF
-      // TMR1 is used to time the time between INT1 interrupts
-      global_data_A36487.last_period = TMR1;
-      TMR1 = 0;
-      if (_T1IF) {
-	// The timer exceed it's period of 400mS - (Will happen if the PRF is less than 2.5Hz)
-	global_data_A36487.last_period = 62501;  // This will indicate that the PRF is Less than 2.5Hz
-      }
-      _T1IF = 0;
-      
+
+      debug_pulse_level_save = GetThisPulseLevel();
+
       // Prepare for future pulses
       previous_level = global_data_A36487.this_pulse_level;
       previous_width = global_data_A36487.this_pulse_width;
@@ -1185,9 +1173,29 @@ void __attribute__((interrupt, shadow, no_auto_psv)) _INT1Interrupt(void) {
       global_data_A36487.next_pulse_level = previous_level;
       global_data_A36487.next_pulse_width = previous_width;
       
+      // DPARKER - IT is possible for This PIN output to get overwritten if there is some other process on this LAT register that gets interrupted
+      if (GetThisPulseLevel() == DOSE_COMMAND_HIGH_ENERGY) {
+	PIN_ENERGY_CPU_OUT = OLL_ENERGY_LEVEL_HIGH;
+      } else {
+	PIN_ENERGY_CPU_OUT = !OLL_ENERGY_LEVEL_HIGH;
+      }  
+      
+      // Calculate the Trigger PRF
+      // TMR1 is used to time the time between INT1 interrupts
+      global_data_A36487.last_period = TMR1;
+      TMR1 = 0;
+      if (_T1IF) {
+	// The timer exceed it's period of 400mS - (Will happen if the PRF is less than 2.5Hz)
+	global_data_A36487.last_period = 62501;  // This will indicate that the PRF is Less than 2.5Hz
+      }
+      _T1IF = 0;
+      
       
       global_data_A36487.trigger_complete = 1;
       uart2_next_byte = 0;
+      uart2_input_buffer[0] = 0x1F;
+      uart2_input_buffer[1] = 0x2F;
+      uart2_input_buffer[2] = 0x3F;
       if (U2STAbits.OERR) {
 	U2STAbits.OERR = 0;
       }
@@ -1234,20 +1242,25 @@ void __attribute__((interrupt(__save__(CORCON,SR)), no_auto_psv)) _U2RXInterrupt
     if (ETMCRC16(&uart2_input_buffer[0],4) == crc_check) {
       if (uart2_input_buffer[1] & 0x01) {
 	global_data_A36487.next_pulse_level = DOSE_COMMAND_LOW_ENERGY;
+	PIN_40US_TEST_POINT = 0;
       } else {
 	global_data_A36487.next_pulse_level = DOSE_COMMAND_HIGH_ENERGY;
+	PIN_40US_TEST_POINT = 1;
       }
       
       trigger_width = uart2_input_buffer[0];
       trigger_width_filtered = uart2_input_buffer[0];
-      ProgramShiftRegistersGrid(uart2_input_buffer[0]);
+      //ProgramShiftRegistersGrid(uart2_input_buffer[0]);
+      global_data_A36487.trigger_width_update_ready = 1;
       global_data_A36487.message_received = 1;
       global_data_A36487.message_received_count++;
     }
     uart2_next_byte = 0;
+    uart2_input_buffer[0] = 0x1F;
+    uart2_input_buffer[1] = 0x2F;
+    uart2_input_buffer[2] = 0x3F;
   }
 #endif
-  PIN_40US_TEST_POINT = 0;
   _U2RXIF = 0;
 }
 

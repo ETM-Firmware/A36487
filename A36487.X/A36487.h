@@ -119,6 +119,9 @@ typedef struct{
   unsigned int total_missed_messages;
   unsigned int message_received_count;
 
+
+  unsigned int trigger_width_update_ready;
+
 } TYPE_GLOBAL_DATA_A36487;
 
 
@@ -504,6 +507,9 @@ typedef struct{
   // FORCE RESET TO BE ACTIVE
 #define ETMCanSlaveGetSyncMsgResetEnable() (1)
   // DPARKER need to confirm that this works
+
+#define ETMCanSlaveGetComFaultStatus() (0)
+
 #endif  
 
 
