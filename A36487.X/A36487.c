@@ -1,29 +1,8 @@
 #include "A36487.h"
 
-
-unsigned int debug_pulse_level_save;
-
-
-void SetupT3PRFDeciHertz(unsigned int decihertz);
-
-#define ANALOG_STATE_WAIT_FOR_DATA_READ  10
-#define ANALOG_STATE_WAIT_FOR_PLC_SET    20
-#define ANALOG_STATE_WAIT_READ_COMPLETE  30
-#define ANALOG_STATE_DATA_READ_FAULT     40
-
-
-unsigned int analog_interface_attempts;
-unsigned int analog_interface_faults;
-unsigned int analog_read_count;
-
-
-unsigned int debug_uart2_int_count;
-unsigned int debug_uart2_message_count;
-
-
-void UpdateAnalogDataFromPLC(void);
-void ReadAnalogRegister(void);
-int SendPersonalityToPLC(unsigned char id);
+/*
+  DPARKER need to figure out and extend the ETM Can functions for high, low, cab scan mode so that all modules are more generic
+*/
 
 
 #define DOSE_COMMAND_LOW_ENERGY   0  
@@ -39,6 +18,10 @@ unsigned char uart2_input_buffer[16];
 unsigned int  uart2_next_byte;
 
 
+
+
+
+
 void DoStateMachine(void);
 void InitializeA36487(void);
 unsigned char ReadDosePersonality(void);
@@ -49,6 +32,13 @@ void ProgramShiftRegistersDelays(void);
 void ProgramShiftRegistersGrid(unsigned char dose_command);
 unsigned int GetThisPulseLevel(void);
 unsigned char InterpolateValue(unsigned int val_0, unsigned int val_1, unsigned int val_2, unsigned int val_3, unsigned char index);
+
+
+void SetupT3PRFDeciHertz(unsigned int decihertz);
+void UpdateAnalogDataFromPLC(void);
+void ReadAnalogRegister(void);
+int SendPersonalityToPLC(unsigned char id);
+
 
 
 //Processor Setup
@@ -564,8 +554,8 @@ void DoA36487(void) {
     ETMCanSlaveSetDebugRegister(0x1, global_data_A36487.total_missed_messages);
     ETMCanSlaveSetDebugRegister(0x2, global_data_A36487.message_received_count);
     
-    ETMCanSlaveSetDebugRegister(0x3, debug_uart2_message_count);
-    ETMCanSlaveSetDebugRegister(0x4, debug_uart2_int_count);
+    //ETMCanSlaveSetDebugRegister(0x3, debug_uart2_message_count);
+    //ETMCanSlaveSetDebugRegister(0x4, debug_uart2_int_count);
     ETMCanSlaveSetDebugRegister(0x5, grid_start_high1);
     ETMCanSlaveSetDebugRegister(0x6, grid_start_high0);
 
@@ -574,9 +564,9 @@ void DoA36487(void) {
     ETMCanSlaveSetDebugRegister(0x9, grid_stop_high1);
     ETMCanSlaveSetDebugRegister(0xA, grid_stop_high0);
 
-    ETMCanSlaveSetDebugRegister(0xB, analog_interface_attempts);
-    ETMCanSlaveSetDebugRegister(0xC, analog_interface_faults);
-    ETMCanSlaveSetDebugRegister(0xD, analog_read_count);
+    ETMCanSlaveSetDebugRegister(0xB, global_data_A36487.analog_interface_attempts);
+    //ETMCanSlaveSetDebugRegister(0xC, analog_interface_faults);
+    //ETMCanSlaveSetDebugRegister(0xD, analog_read_count);
     ETMCanSlaveSetDebugRegister(0xE, global_data_A36487.state_analog_data_read);
     //ETMCanSlaveSetDebugRegister(0xF, global_data_A36487.personality_send_attempts);
   }
@@ -595,7 +585,7 @@ void UpdateAnalogDataFromPLC(void) {
 
   if ((PIN_PACKAGE_VALID_IN == ILL_PACKAGE_VALID) && (global_data_A36487.state_analog_data_read == ANALOG_STATE_WAIT_FOR_DATA_READ)) {
     // INITIATE Data Read
-    analog_interface_attempts++;
+    global_data_A36487.analog_interface_attempts++;
 
 
     PIN_ANALOG_READ_COMPLETE_OUT = !OLL_ANALOG_READ_COMPLETE;
@@ -640,7 +630,6 @@ void UpdateAnalogDataFromPLC(void) {
     global_data_A36487.analog_interface_timer = 0;
     global_data_A36487.state_analog_data_read = ANALOG_STATE_WAIT_FOR_DATA_READ;
     PIN_ANALOG_READ_COMPLETE_OUT = OLL_ANALOG_READ_COMPLETE;
-    analog_interface_faults++;
   }
 }
 
@@ -677,8 +666,6 @@ void ReadAnalogRegister(void) {
     21 = Low Energy AFC Delay
     22 = Not Implemented
   */
-
-  analog_read_count++;
 
   switch (global_data_A36487.analog_register_select) {
   case 0:
@@ -787,7 +774,7 @@ void DoPostTriggerProcess(void) {
 			    (global_data_A36487.pulses_on - 1),
 			    *(unsigned int*)&trigger_width,
 			    *(unsigned int*)&data_grid_start,
-			    debug_pulse_level_save);
+			    0);
   }
 }
 
@@ -1094,12 +1081,14 @@ void ETMCanSlaveExecuteCMDBoardSpecific(ETMCanMessage* message_ptr) {
       *(unsigned int*)&grid_stop_low1 = message_ptr->word1;
       *(unsigned int*)&magnetron_current_sample_delay_low = message_ptr->word0;
       global_data_A36487.counter_config_received |= 0b1000;
-
       break;
-
+      
     case ETM_CAN_REGISTER_PULSE_SYNC_SET_1_CUSTOMER_LED_OUTPUT:
       //global_data_A36487.led_state = message_ptr->word0;
-      SetupT3PRFDeciHertz(message_ptr->word2);
+      if (message_ptr->word2 != trigger_set_decihertz) {
+	trigger_set_decihertz = message_ptr->word2;
+	SetupT3PRFDeciHertz(trigger_set_decihertz);
+      }
       break;
       
     default:
@@ -1161,8 +1150,6 @@ void __attribute__((interrupt, shadow, no_auto_psv)) _INT1Interrupt(void) {
 	_T3IF = 0;
       }
 
-      debug_pulse_level_save = GetThisPulseLevel();
-
       // Prepare for future pulses
       previous_level = global_data_A36487.this_pulse_level;
       previous_width = global_data_A36487.this_pulse_width;
@@ -1220,12 +1207,12 @@ void __attribute__((interrupt, shadow, no_auto_psv)) _INT1Interrupt(void) {
   _INT1IF = 0;
 }
   
-  
+unsigned int trigger_test_count;  
+
 void __attribute__((interrupt(__save__(CORCON,SR)), no_auto_psv)) _U2RXInterrupt(void) {
 #ifndef __INTERNAL_TRIGGER
   unsigned int crc_check;
   unsigned char data;
-  debug_uart2_int_count++;
   while (U2STAbits.URXDA) {
     data = U2RXREG;
     uart2_input_buffer[uart2_next_byte] = data;
@@ -1238,7 +1225,6 @@ void __attribute__((interrupt(__save__(CORCON,SR)), no_auto_psv)) _U2RXInterrupt
     crc_check   = uart2_input_buffer[5];
     crc_check <<= 8;
     crc_check  += uart2_input_buffer[4];
-    debug_uart2_message_count++;
     if (ETMCRC16(&uart2_input_buffer[0],4) == crc_check) {
       if (uart2_input_buffer[1] & 0x01) {
 	global_data_A36487.next_pulse_level = DOSE_COMMAND_LOW_ENERGY;
@@ -1250,7 +1236,27 @@ void __attribute__((interrupt(__save__(CORCON,SR)), no_auto_psv)) _U2RXInterrupt
       
       trigger_width = uart2_input_buffer[0];
       trigger_width_filtered = uart2_input_buffer[0];
-      //ProgramShiftRegistersGrid(uart2_input_buffer[0]);
+      
+      // -------------- Added for test pulse -------------
+      /*
+	DPARKER - Remove this someday
+      trigger_test_count++;
+      if (trigger_test_count < 0x400) {
+	trigger_width = 0x00; 
+      } else if (trigger_test_count < 0x1400) {
+	trigger_width = ((trigger_test_count - 0x400) >> 4);
+      } else {
+	trigger_width = 0xFF;
+      }
+      
+      trigger_width_filtered = trigger_width;
+
+      if (trigger_test_count > 0x1800) {
+	trigger_test_count = 0;
+      }
+      */
+      // ------------ End added for test pulse --------- 
+
       global_data_A36487.trigger_width_update_ready = 1;
       global_data_A36487.message_received = 1;
       global_data_A36487.message_received_count++;

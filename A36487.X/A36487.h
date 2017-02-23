@@ -38,7 +38,6 @@
 #define __TRIGGER_AFC_HIGH_ONLY
 
 //#define __INTERNAL_TRIGGER // - Does not Have Serial Dose
-
 //#define __COMPILE_MODE_2_5
 
 
@@ -104,6 +103,8 @@ typedef struct{
   unsigned int analog_interface_timer;
   unsigned int state_analog_data_read;
   unsigned int analog_register_select;
+  unsigned int analog_interface_attempts;
+
   unsigned int prf_ok;
   unsigned int accumulator_counter;
 
@@ -122,6 +123,7 @@ typedef struct{
 
   unsigned int trigger_width_update_ready;
 
+
 } TYPE_GLOBAL_DATA_A36487;
 
 
@@ -133,6 +135,12 @@ typedef struct{
 #define STATE_X_RAY_ENABLE      50
 #define STATE_FAULT             60
 #define STATE_UNKNOWN           70
+
+// State for Analog Interface with PLC
+#define ANALOG_STATE_WAIT_FOR_DATA_READ  10
+#define ANALOG_STATE_WAIT_FOR_PLC_SET    20
+#define ANALOG_STATE_WAIT_READ_COMPLETE  30
+#define ANALOG_STATE_DATA_READ_FAULT     40
 
 
 #define _FAULT_TIMING_MISMATCH                     _FAULT_0
@@ -199,7 +207,7 @@ typedef struct{
 #define data_grid_start           (*(((unsigned char*)&slave_board_data.log_data[11]) + 0))
 #define data_grid_stop            (*(((unsigned char*)&slave_board_data.log_data[11]) + 1))
 
-
+#define trigger_set_decihertz     slave_board_data.log_data[16] // DPARKER Confirm this location is ok with documentation
 
 
 //  ----------  ADC CONFIGURATION --------------
