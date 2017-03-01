@@ -34,11 +34,10 @@
   
  */
 
-#define __PLC_INTERFACE  // IF NOT, Implies Can interface 
-#define __TRIGGER_AFC_HIGH_ONLY
+//#define __PLC_INTERFACE  // IF NOT, Implies Can interface 
+//#define __TRIGGER_AFC_HIGH_ONLY
 
-//#define __INTERNAL_TRIGGER // - Does not Have Serial Dose
-//#define __COMPILE_MODE_2_5
+#define __INTERNAL_TRIGGER // - Does not Have Serial Dose
 
 
 #define DELAY_PLC   2500000  // 2.5 million cycles
@@ -90,6 +89,8 @@ typedef struct{
   
   TYPE_DIGITAL_INPUT pfn_fan_fault;
   
+  TYPE_DIGITAL_INPUT gun_fault_fiber;
+
   AnalogInput  analog_1;
   AnalogInput  analog_2;
   AnalogInput  analog_3;
@@ -150,6 +151,8 @@ typedef struct{
 //#define _FAULT_TRIGGER_STAYED_ON                   _FAULT_4
 #define _FAULT_PANEL_OPEN                          _FAULT_5
 #define _FAULT_KEYLOCK_OPEN                        _FAULT_6
+// _FAULT_7  DPARKER Some type of personality read error
+#define _FAULT_GUN_STATUS_FIBER                    _FAULT_8
 
 
 #define _STATUS_CUSTOMER_HV_DISABLE                _WARNING_0
@@ -199,7 +202,7 @@ typedef struct{
 #define magnetron_current_sample_delay_low    *(unsigned char*)&slave_board_data.log_data[14]
 #define afc_delay_low             (*((unsigned char*)&slave_board_data.log_data[14] + 1))
 
-#define log_data_rep_rate_deci_hertz        slave_board_data.log_data[3]
+#define log_data_rep_rate_deci_hertz        slave_board_data.log_data[15]
 
 #define trigger_width             (*((unsigned char*)&slave_board_data.log_data[7] + 0))
 #define trigger_width_filtered    (*((unsigned char*)&slave_board_data.log_data[7] + 1))
@@ -207,7 +210,9 @@ typedef struct{
 #define data_grid_start           (*(((unsigned char*)&slave_board_data.log_data[11]) + 0))
 #define data_grid_stop            (*(((unsigned char*)&slave_board_data.log_data[11]) + 1))
 
-#define trigger_set_decihertz     slave_board_data.log_data[16] // DPARKER Confirm this location is ok with documentation
+#define trigger_set_high_energy_decihertz    slave_board_data.log_data[16]
+#define trigger_set_low_energy_decihertz     slave_board_data.log_data[17]
+#define trigger_set_point_active_decihertz   slave_board_data.log_data[15]
 
 
 //  ----------  ADC CONFIGURATION --------------
@@ -442,15 +447,23 @@ typedef struct{
 #define _MACRO_NOT_XRAY_ENABLE   ((PIN_CPU_XRAY_ENABLE_IN == !ILL_PLC_READY) || ((PIN_LOW_MODE_IN == !ILL_MODE_BIT_SELECTED) && (PIN_HIGH_MODE_IN == !ILL_MODE_BIT_SELECTED)))
 
 #else
-
+// We are working with a 6/4 system
 #define _MACRO_HV_ENABLE         (ETMCanSlaveGetSyncMsgPulseSyncDisableHV() == 0)
 #define _MACRO_NOT_HV_ENABLE     (ETMCanSlaveGetSyncMsgPulseSyncDisableHV())
 
+#ifdef  __INTERNAL_TRIGGER
+#define _MACRO_XRAY_ENABLE       ((ETMCanSlaveGetSyncMsgPulseSyncDisableXray() == 0) && (PIN_LOW_MODE_IN != PIN_HIGH_MODE_IN))
+#define _MACRO_NOT_XRAY_ENABLE   (ETMCanSlaveGetSyncMsgPulseSyncDisableXray() || (PIN_LOW_MODE_IN == PIN_HIGH_MODE_IN))
 
+#else
 #define _MACRO_XRAY_ENABLE       (ETMCanSlaveGetSyncMsgPulseSyncDisableXray() == 0)
 #define _MACRO_NOT_XRAY_ENABLE   (ETMCanSlaveGetSyncMsgPulseSyncDisableXray())
 
-#endif
+#endif // #ifdef  __INTERNAL_TRIGGER
+ 
+
+
+#endif // #else #ifdef __PLC_INTERFACE
 
 
 
@@ -512,10 +525,10 @@ typedef struct{
 
 
 #ifdef __PLC_INTERFACE
-  // FORCE RESET TO BE ACTIVE
+// FORce Reset to be active
 #define ETMCanSlaveGetSyncMsgResetEnable() (1)
-  // DPARKER need to confirm that this works
 
+// Force can com faults to be ignored
 #define ETMCanSlaveGetComFaultStatus() (0)
 
 #endif  

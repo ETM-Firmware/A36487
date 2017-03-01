@@ -284,6 +284,11 @@ void InitializeA36487(void) {
   _T3IE = 1;
   _T3IP = 7;
   T3CON = T3CON_VALUE;
+  
+  trigger_set_point_active_decihertz = 10;
+  trigger_set_high_energy_decihertz = 10;
+  trigger_set_low_energy_decihertz = 10;
+  SetupT3PRFDeciHertz(trigger_set_point_active_decihertz);
 #endif
 
 
@@ -312,6 +317,10 @@ void InitializeA36487(void) {
   // Read the personality module
   global_data_A36487.personality = ReadDosePersonality();
   
+#ifndef __PLC_INTERFACE
+  global_data_A36487.personality = 0;
+#endif
+
   _STATUS_PERSONALITY_READ_COMPLETE = 0;
   if (global_data_A36487.personality != 0xFF) {
     _STATUS_PERSONALITY_READ_COMPLETE = 1;
@@ -350,6 +359,7 @@ void InitializeA36487(void) {
   
   // Initialize the digital faults
   ETMDigitalInitializeInput(&global_data_A36487.pfn_fan_fault, ILL_PIN_PFN_FAULT, 50);
+  ETMDigitalInitializeInput(&global_data_A36487.gun_fault_fiber, ILL_PIN_GUN_FAULT, 50);
 
 #ifdef __PLC_INTERFACE
   unsigned int personality_sent_results;
@@ -365,6 +375,8 @@ void InitializeA36487(void) {
 #endif 
   
   global_data_A36487.state_analog_data_read = ANALOG_STATE_WAIT_FOR_DATA_READ;
+
+
 }
 
 
@@ -458,19 +470,6 @@ void DoA36487(void) {
     }
   }
   
-  ETMDigitalUpdateInput(&global_data_A36487.pfn_fan_fault, PIN_CPU_PFN_OK_IN);
-  
-  if (ETMDigitalFilteredOutput(&global_data_A36487.pfn_fan_fault) == ILL_PIN_PFN_FAULT) {
-    _FAULT_PFN_STATUS = 1;
-  } else {
-    if (ETMCanSlaveGetSyncMsgResetEnable()) {
-      _FAULT_PFN_STATUS = 0;
-    }
-  }
-  
-  // DPARKER - ADD FILTER AND FAULT FOR GUN FAULT
-  
-
   if (PIN_CPU_RF_OK_IN == ILL_PIN_RF_FAULT) {
     _FAULT_RF_STATUS = 1;
   } else {
@@ -506,6 +505,30 @@ void DoA36487(void) {
     _T2IF = 0;
 
     global_data_A36487.led_flash_counter++;
+
+
+    ETMDigitalUpdateInput(&global_data_A36487.pfn_fan_fault, PIN_CPU_PFN_OK_IN);
+    
+    if (ETMDigitalFilteredOutput(&global_data_A36487.pfn_fan_fault) == ILL_PIN_PFN_FAULT) {
+      _FAULT_PFN_STATUS = 1;
+    } else {
+      if (ETMCanSlaveGetSyncMsgResetEnable()) {
+	_FAULT_PFN_STATUS = 0;
+      }
+    }
+
+    ETMDigitalUpdateInput(&global_data_A36487.gun_fault_fiber, PIN_CPU_GUNDRIVER_OK_IN);
+    if (ETMDigitalFilteredOutput(&global_data_A36487.gun_fault_fiber) == ILL_PIN_GUN_FAULT) {
+      _FAULT_GUN_STATUS_FIBER = 1;
+    } else {
+      if (ETMCanSlaveGetSyncMsgResetEnable()) {
+	_FAULT_GUN_STATUS_FIBER = 0;
+      }
+    } 
+    
+    
+    // DPARKER - ADD FILTER AND FAULT FOR GUN FAULT
+    
 
     
     // -------------- UPDATE LED AND STATUS LINE OUTPUTS ---------------- //
@@ -551,24 +574,13 @@ void DoA36487(void) {
     
     // Update the debugging Data
     ETMCanSlaveSetDebugRegister(0x0, global_data_A36487.control_state);
-    ETMCanSlaveSetDebugRegister(0x1, global_data_A36487.total_missed_messages);
-    ETMCanSlaveSetDebugRegister(0x2, global_data_A36487.message_received_count);
-    
-    //ETMCanSlaveSetDebugRegister(0x3, debug_uart2_message_count);
-    //ETMCanSlaveSetDebugRegister(0x4, debug_uart2_int_count);
-    ETMCanSlaveSetDebugRegister(0x5, grid_start_high1);
-    ETMCanSlaveSetDebugRegister(0x6, grid_start_high0);
+    ETMCanSlaveSetDebugRegister(0x1, trigger_set_point_active_decihertz);
 
     ETMCanSlaveSetDebugRegister(0x7, grid_stop_high3);
-    ETMCanSlaveSetDebugRegister(0x8, grid_stop_high2);
-    ETMCanSlaveSetDebugRegister(0x9, grid_stop_high1);
-    ETMCanSlaveSetDebugRegister(0xA, grid_stop_high0);
+    ETMCanSlaveSetDebugRegister(0x8, grid_start_high3);
+    ETMCanSlaveSetDebugRegister(0x9, grid_stop_low3);
+    ETMCanSlaveSetDebugRegister(0xA, grid_start_low3);
 
-    ETMCanSlaveSetDebugRegister(0xB, global_data_A36487.analog_interface_attempts);
-    //ETMCanSlaveSetDebugRegister(0xC, analog_interface_faults);
-    //ETMCanSlaveSetDebugRegister(0xD, analog_read_count);
-    ETMCanSlaveSetDebugRegister(0xE, global_data_A36487.state_analog_data_read);
-    //ETMCanSlaveSetDebugRegister(0xF, global_data_A36487.personality_send_attempts);
   }
 }
 
@@ -768,6 +780,20 @@ void DoPostTriggerProcess(void) {
 
   global_data_A36487.period_filtered = RCFilterNTau(global_data_A36487.period_filtered, global_data_A36487.last_period, RC_FILTER_4_TAU);  // Update the PRF
 
+  // Update the PRF
+  if (GetThisPulseLevel() == DOSE_COMMAND_HIGH_ENERGY) {
+    if (trigger_set_point_active_decihertz != trigger_set_high_energy_decihertz) {
+      trigger_set_point_active_decihertz = trigger_set_high_energy_decihertz;
+      SetupT3PRFDeciHertz(trigger_set_point_active_decihertz);
+    }
+  } else {
+    if (trigger_set_point_active_decihertz != trigger_set_low_energy_decihertz) {
+      trigger_set_point_active_decihertz = trigger_set_low_energy_decihertz;
+      SetupT3PRFDeciHertz(trigger_set_point_active_decihertz);
+    }
+  }
+
+
   if (ETMCanSlaveGetSyncMsgHighSpeedLogging()) {
     // Log Pulse by Pulse data
     ETMCanSlaveLogPulseData(ETM_CAN_DATA_LOG_REGISTER_PULSE_SYNC_FAST_LOG_0,
@@ -850,6 +876,7 @@ void ProgramShiftRegistersGrid(unsigned char dose_command) {
 
 
 unsigned int GetThisPulseLevel(void) {
+#ifdef __PLC_INTERFACE
   if ((PIN_LOW_MODE_IN == ILL_MODE_BIT_SELECTED) && (PIN_HIGH_MODE_IN == !ILL_MODE_BIT_SELECTED)) {
     // CAB SCAN
     return DOSE_COMMAND_CAB_SCAN;
@@ -861,6 +888,16 @@ unsigned int GetThisPulseLevel(void) {
   }
   
   return global_data_A36487.this_pulse_level;
+
+#else
+  
+  if (PIN_HIGH_MODE_IN == ILL_MODE_BIT_SELECTED) {
+    return DOSE_COMMAND_HIGH_ENERGY;
+  }
+  
+  return DOSE_COMMAND_LOW_ENERGY;
+#endif
+  
 }
 
 
@@ -997,6 +1034,8 @@ int SendPersonalityToPLC(unsigned char id) {
   return ret;       //Communication Successful = 0
 }
 
+#define MIN_REQUESTED_PRF_DECIHERTZ 10
+#define MAX_REQUESTED_PRF_DECIHERTZ 5000
 
 void SetupT3PRFDeciHertz(unsigned int decihertz) {
 #ifdef __INTERNAL_TRIGGER
@@ -1085,10 +1124,8 @@ void ETMCanSlaveExecuteCMDBoardSpecific(ETMCanMessage* message_ptr) {
       
     case ETM_CAN_REGISTER_PULSE_SYNC_SET_1_CUSTOMER_LED_OUTPUT:
       //global_data_A36487.led_state = message_ptr->word0;
-      if (message_ptr->word2 != trigger_set_decihertz) {
-	trigger_set_decihertz = message_ptr->word2;
-	SetupT3PRFDeciHertz(trigger_set_decihertz);
-      }
+      trigger_set_high_energy_decihertz = message_ptr->word2;
+      trigger_set_low_energy_decihertz = message_ptr->word1;
       break;
       
     default:
@@ -1107,11 +1144,11 @@ void ETMCanSlaveExecuteCMDBoardSpecific(ETMCanMessage* message_ptr) {
 void __attribute__((interrupt, no_auto_psv)) _T3Interrupt(void) {
 #ifdef __INTERNAL_TRIGGER
   if ((global_data_A36487.control_state == STATE_X_RAY_ENABLE)) {
-    PIN_CPU_START_OUT == OLL_CPU_START;
+    PIN_CPU_START_OUT = OLL_CPU_START;
     __delay32(60);  // Delay 6 uS
   }
   
-  PIN_CPU_START_OUT == !OLL_CPU_START;
+  PIN_CPU_START_OUT = !OLL_CPU_START;
   
   global_data_A36487.last_period = TMR1;
   TMR1 = 0;
@@ -1122,6 +1159,9 @@ void __attribute__((interrupt, no_auto_psv)) _T3Interrupt(void) {
   _T1IF = 0;
   
   global_data_A36487.trigger_complete = 1;
+  trigger_width = 0xFF;
+  trigger_width_filtered = 0xFF;
+  global_data_A36487.this_pulse_width = 0xFF;
 #endif
   _T3IF = 0;
 }

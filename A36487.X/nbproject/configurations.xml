@@ -179,7 +179,7 @@
       </C30Global>
       <ICD3PlatformTool>
         <property key="ADC" value="true"/>
-        <property key="AutoSelectMemRanges" value="manual"/>
+        <property key="AutoSelectMemRanges" value="auto"/>
         <property key="DCI" value="true"/>
         <property key="I2C" value="true"/>
         <property key="INPUT CAPTURE 1" value="true"/>
