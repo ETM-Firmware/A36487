@@ -401,12 +401,12 @@ typedef struct{
 #define PIN_CPU_HV_ENABLE_OUT               _LATG15
 #define PIN_CPU_WARMUP_OUT                  _LATD10
 
-#define OLL_CPU_READY                       1
-#define OLL_CPU_STANDBY                     1
+#define OLL_CPU_READY                       0
+#define OLL_CPU_STANDBY                     0
 #define OLL_CPU_XRAY_ENABLE                 1
-#define OLL_CPU_SUMFLT                      1
+#define OLL_CPU_SUMFLT                      0
 #define OLL_CPU_HV_ENABLE                   1
-#define OLL_CPU_WARMUP                      1
+#define OLL_CPU_WARMUP                      0
 
 
 
