@@ -282,6 +282,8 @@ void InitializeA36487(void) {
   _STATUS_HIGH_MODE_OVERRIDE = 0;
   
   ETMDigitalInitializeInput(&psb_data.pfn_fan_fault, ILL_PIN_PFN_FAULT, 50);
+  ETMDigitalInitializeInput(&psb_data.keylock_off, ILL_KEY_LOCK_FAULT , 20);
+  ETMDigitalInitializeInput(&psb_data.panel_open, ILL_PANEL_OPEN , 20);
 }
 
 
@@ -307,23 +309,9 @@ void DoA36487(void) {
     _FAULT_REGISTER = 0;
   }
   
-  if (PIN_PANEL_IN == ILL_PANEL_OPEN) {
-    _FAULT_PANEL_OPEN = 1;
-  } else {
-    if (ETMCanSlaveGetSyncMsgResetEnable()) {
-      _FAULT_PANEL_OPEN = 0;
-    }
-  }
-  
-  if (PIN_KEY_LOCK_IN == ILL_KEY_LOCK_FAULT) {
-    _FAULT_KEYLOCK_OPEN = 1;
-  } else {
-    if (ETMCanSlaveGetSyncMsgResetEnable()) {
-      _FAULT_KEYLOCK_OPEN = 0;
-    }
-  }
-
   ETMDigitalUpdateInput(&psb_data.pfn_fan_fault, PIN_PFN_OK);
+  ETMDigitalUpdateInput(&psb_data.keylock_off, PIN_KEY_LOCK_IN);
+  ETMDigitalUpdateInput(&psb_data.panel_open, PIN_PANEL_IN);
   
   if (ETMDigitalFilteredOutput(&psb_data.pfn_fan_fault) == ILL_PIN_PFN_FAULT) {
     _FAULT_PFN_STATUS = 1;
@@ -333,6 +321,25 @@ void DoA36487(void) {
     }
   }
   
+  if (ETMDigitalFilteredOutput(&psb_data.keylock_off) == ILL_KEY_LOCK_FAULT) {
+    _FAULT_KEYLOCK_OPEN = 1;
+  } else {
+    if (ETMCanSlaveGetSyncMsgResetEnable()) {
+      _FAULT_KEYLOCK_OPEN = 0;
+    }
+  }
+
+  if (ETMDigitalFilteredOutput(&psb_data.panel_open) == ILL_PANEL_OPEN) {
+    _FAULT_PANEL_OPEN = 1;
+  } else {
+    if (ETMCanSlaveGetSyncMsgResetEnable()) {
+      _FAULT_PANEL_OPEN = 0;
+    }
+  }
+
+
+
+
   if (PIN_RF_OK == ILL_PIN_RF_FAULT) {
     _FAULT_RF_STATUS = 1;
   } else {

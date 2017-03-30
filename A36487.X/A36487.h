@@ -41,6 +41,9 @@ typedef struct{
     unsigned char magnetron_current_sample_delay;
 
     TYPE_DIGITAL_INPUT pfn_fan_fault;
+
+    TYPE_DIGITAL_INPUT keylock_off;
+    TYPE_DIGITAL_INPUT panel_open;
     
     
     unsigned char personality;      //0=UL, 1=L, 2=M, 3=H
