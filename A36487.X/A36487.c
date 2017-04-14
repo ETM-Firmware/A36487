@@ -1145,7 +1145,7 @@ void __attribute__((interrupt, no_auto_psv)) _T3Interrupt(void) {
 #ifdef __INTERNAL_TRIGGER
   if ((global_data_A36487.control_state == STATE_X_RAY_ENABLE)) {
     PIN_CPU_START_OUT = OLL_CPU_START;
-    __delay32(60);  // Delay 6 uS
+    __delay32(300);  // Delay 30 uS
   }
   
   PIN_CPU_START_OUT = !OLL_CPU_START;
@@ -1200,13 +1200,6 @@ void __attribute__((interrupt, shadow, no_auto_psv)) _INT1Interrupt(void) {
       global_data_A36487.next_pulse_level = previous_level;
       global_data_A36487.next_pulse_width = previous_width;
       
-      // DPARKER - IT is possible for This PIN output to get overwritten if there is some other process on this LAT register that gets interrupted
-      if (GetThisPulseLevel() == DOSE_COMMAND_HIGH_ENERGY) {
-	PIN_ENERGY_CPU_OUT = OLL_ENERGY_LEVEL_HIGH;
-      } else {
-	PIN_ENERGY_CPU_OUT = !OLL_ENERGY_LEVEL_HIGH;
-      }  
-      
       // Calculate the Trigger PRF
       // TMR1 is used to time the time between INT1 interrupts
       global_data_A36487.last_period = TMR1;
@@ -1239,7 +1232,14 @@ void __attribute__((interrupt, shadow, no_auto_psv)) _INT1Interrupt(void) {
 
 
       // DPARKER - REDUCE THIS DELAY TO ACCOUNT FOR THE TIME IT TAKES TO GET HERE
-      __delay32(60);  // Delay 6 uS
+      __delay32(300);  // Delay 30 uS
+
+      // DPARKER - IT is possible for This PIN output to get overwritten if there is some other process on this LAT register that gets interrupted
+      if (GetThisPulseLevel() == DOSE_COMMAND_HIGH_ENERGY) {
+	PIN_ENERGY_CPU_OUT = OLL_ENERGY_LEVEL_HIGH;
+      } else {
+	PIN_ENERGY_CPU_OUT = !OLL_ENERGY_LEVEL_HIGH;
+      }  
     }
   }
   PIN_CPU_START_OUT = !OLL_CPU_START;
