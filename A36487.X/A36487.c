@@ -769,6 +769,20 @@ void DoPostTriggerProcess(void) {
   } else {
     PIN_ENERGY_CPU_OUT = !OLL_ENERGY_LEVEL_HIGH;
   }  
+  
+  PIN_HVPS_POLARITY_OUT = OLL_POLARITY_NORMAL;
+  if (GetThisPulseLevel() == DOSE_COMMAND_CAB_SCAN) {
+    PIN_ENERGY_CPU_OUT = OLL_ENERGY_LEVEL_HIGH;
+    PIN_GUN_CAB_SCAN_FIBER_OUT = OLL_GUN_CAB_SCAN_SELECTED;
+    if (global_data_A36487.this_pulse_level == DOSE_COMMAND_HIGH_ENERGY) {
+      // DPARKER THIS MAKES NO SENSE
+      // we need to force the PFN Control Board to low energy
+      PIN_HVPS_POLARITY_OUT = !OLL_POLARITY_NORMAL;
+    }
+  } else {
+    PIN_GUN_CAB_SCAN_FIBER_OUT = !OLL_GUN_CAB_SCAN_SELECTED;
+  }
+
 
   PIN_AFC_TRIGGER_ENABLE_OUT = OLL_AFC_TRIGGER_ENABLE;
 
@@ -846,8 +860,8 @@ void ProgramShiftRegistersDelays(void) {
   Nop();
 }
 
-#define CAB_SCAN_GRID_START   150
-#define CAB_SCAN_GRID_STOP    155
+#define CAB_SCAN_GRID_START   110
+#define CAB_SCAN_GRID_STOP    115
 
 void ProgramShiftRegistersGrid(unsigned char dose_command) {
   unsigned int data;

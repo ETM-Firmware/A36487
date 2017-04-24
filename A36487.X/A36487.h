@@ -344,6 +344,8 @@ typedef struct{
 #define PIN_LD_DELAY_AFC_OUT              _LATD13
 #define PIN_ANALOG_READ_COMPLETE_OUT      _LATD15
 #define PIN_PORTAL_GANTRY_MODE_OUT        _LATF2
+#define PIN_GUN_CAB_SCAN_FIBER_OUT        _LATG1
+
 
 #define PIN_40US_TEST_POINT               _LATA15
 
@@ -354,6 +356,7 @@ typedef struct{
 #define OLL_AFC_TRIGGER_ENABLE              1
 #define OLL_ENERGY_LEVEL_HIGH               1
 #define OLL_POLARITY_NORMAL                 0
+#define OLL_GUN_CAB_SCAN_SELECTED           1
 
 #define PIN_CPU_GUNDRIVER_OK_IN           _RA6
 #define PIN_CPU_RF_OK_IN                  _RA7
@@ -397,8 +400,7 @@ typedef struct{
 #define PIN_CPU_STANDBY_OUT                 _LATB5
 #define PIN_CPU_XRAY_ENABLE_OUT             _LATC13
 #define PIN_CPU_SUMFLT_OUT                  _LATD0
-//#define PIN_CPU_HV_ENABLE_OUT               _LATD8 DPARKER testing only
-#define PIN_CPU_HV_ENABLE_OUT               _LATG15
+#define PIN_CPU_HV_ENABLE_OUT               _LATD8
 #define PIN_CPU_WARMUP_OUT                  _LATD10
 
 #define OLL_CPU_READY                       0
@@ -421,7 +423,7 @@ typedef struct{
 #define A36487_TRISC_VALUE 0b1011111111110011
 #define A36487_TRISD_VALUE 0b0100010101100001
 #define A36487_TRISF_VALUE 0b1111111111111011
-#define A36487_TRISG_VALUE 0b0101111111111111
+#define A36487_TRISG_VALUE 0b0101111111111101
 
 #else
 
