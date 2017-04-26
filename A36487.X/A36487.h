@@ -124,6 +124,8 @@ typedef struct{
 
   unsigned int trigger_width_update_ready;
 
+  unsigned char uart_message_type;
+  unsigned char uart_sequence_id;
 
 } TYPE_GLOBAL_DATA_A36487;
 

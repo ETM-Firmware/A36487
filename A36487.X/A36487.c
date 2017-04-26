@@ -443,7 +443,8 @@ void DoA36487(void) {
   }
 
   if ((global_data_A36487.trigger_width_update_ready) && (global_data_A36487.trigger_complete == 0)) {
-    ProgramShiftRegistersGrid(trigger_width_filtered);
+    global_data_A36487.this_pulse_width = trigger_width_filtered;
+    ProgramShiftRegistersGrid(global_data_A36487.this_pulse_width);
     global_data_A36487.trigger_width_update_ready = 0;
     PIN_40US_TEST_POINT = 0;
   }
@@ -1279,8 +1280,8 @@ void __attribute__((interrupt(__save__(CORCON,SR)), no_auto_psv)) _U2RXInterrupt
     crc_check   = uart2_input_buffer[5];
     crc_check <<= 8;
     crc_check  += uart2_input_buffer[4];
-    if (ETMCRC16(&uart2_input_buffer[0],4) == crc_check) {
-      if (uart2_input_buffer[1] & 0x01) {
+    if (ETMCRCModbus(&uart2_input_buffer[0],4) == crc_check) {
+      if (uart2_input_buffer[2] & 0x01) {
 	global_data_A36487.next_pulse_level = DOSE_COMMAND_LOW_ENERGY;
 	PIN_40US_TEST_POINT = 0;
       } else {
@@ -1288,29 +1289,12 @@ void __attribute__((interrupt(__save__(CORCON,SR)), no_auto_psv)) _U2RXInterrupt
 	PIN_40US_TEST_POINT = 1;
       }
       
-      trigger_width = uart2_input_buffer[0];
-      trigger_width_filtered = uart2_input_buffer[0];
+      global_data_A36487.uart_message_type = (uart2_input_buffer[0] >> 4);
+      global_data_A36487.uart_sequence_id  = (uart2_input_buffer[0] & 0x0F);
       
-      // -------------- Added for test pulse -------------
-      /*
-	DPARKER - Remove this someday
-      trigger_test_count++;
-      if (trigger_test_count < 0x400) {
-	trigger_width = 0x00; 
-      } else if (trigger_test_count < 0x1400) {
-	trigger_width = ((trigger_test_count - 0x400) >> 4);
-      } else {
-	trigger_width = 0xFF;
-      }
+      trigger_width = uart2_input_buffer[1];
+      trigger_width_filtered = uart2_input_buffer[1];
       
-      trigger_width_filtered = trigger_width;
-
-      if (trigger_test_count > 0x1800) {
-	trigger_test_count = 0;
-      }
-      */
-      // ------------ End added for test pulse --------- 
-
       global_data_A36487.trigger_width_update_ready = 1;
       global_data_A36487.message_received = 1;
       global_data_A36487.message_received_count++;
