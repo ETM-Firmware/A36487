@@ -88,8 +88,10 @@ typedef struct{
 
   
   TYPE_DIGITAL_INPUT pfn_fan_fault;
-  
   TYPE_DIGITAL_INPUT gun_fault_fiber;
+  TYPE_DIGITAL_INPUT rf_fault_fiber;
+  TYPE_DIGITAL_INPUT digital_input_key_lock;
+  TYPE_DIGITAL_INPUT digital_input_panel_open;
 
   AnalogInput  analog_1;
   AnalogInput  analog_2;

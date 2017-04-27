@@ -320,9 +320,6 @@ void InitializeA36487(void) {
 #endif
 
 
-  // DPARKER Initialize the digital faults
-  
-  
   // Read the personality module
   global_data_A36487.personality = ReadDosePersonality();
   
@@ -364,11 +361,16 @@ void InitializeA36487(void) {
   
   // Configure SPI Module to write to the delay line sift Registers
   ConfigureSPI(ETM_SPI_PORT_2, ETM_DEFAULT_SPI_CON_VALUE, ETM_DEFAULT_SPI_CON2_VALUE, ETM_DEFAULT_SPI_STAT_VALUE, SPI_CLK_5_MBIT, FCY);
-  // DPARKER CONSIDER WRITING MODULE FOR SHIFT REGISTER DELAY LINE
   
   // Initialize the digital faults
   ETMDigitalInitializeInput(&global_data_A36487.pfn_fan_fault, ILL_PIN_PFN_FAULT, 50);
-  ETMDigitalInitializeInput(&global_data_A36487.gun_fault_fiber, ILL_PIN_GUN_FAULT, 50);
+  ETMDigitalInitializeInput(&global_data_A36487.gun_fault_fiber, ILL_PIN_GUN_FAULT, 10);
+  ETMDigitalInitializeInput(&global_data_A36487.rf_fault_fiber, ILL_PIN_GUN_FAULT, 10);
+  ETMDigitalInitializeInput(&global_data_A36487.digital_input_key_lock, ILL_KEY_LOCK_FAULT, 50);
+  ETMDigitalInitializeInput(&global_data_A36487.digital_input_panel_open, ILL_PANEL_OPEN, 50);
+
+  
+
 
 #ifdef __PLC_INTERFACE
   unsigned int personality_sent_results;
@@ -463,30 +465,51 @@ void DoA36487(void) {
   if ((global_data_A36487.control_state == STATE_FAULT) && ETMCanSlaveGetSyncMsgResetEnable()) {
     _FAULT_REGISTER = 0;
   }
-  
-  if (PIN_PANEL_IN == ILL_PANEL_OPEN) {
-    _FAULT_PANEL_OPEN = 1;
+
+  ETMDigitalUpdateInput(&global_data_A36487.pfn_fan_fault, PIN_CPU_PFN_OK_IN);
+  if (ETMDigitalFilteredOutput(&global_data_A36487.pfn_fan_fault) == ILL_PIN_PFN_FAULT) {
+    _FAULT_PFN_STATUS = 1;
   } else {
     if (ETMCanSlaveGetSyncMsgResetEnable()) {
-      _FAULT_PANEL_OPEN = 0;
+      _FAULT_PFN_STATUS = 0;
     }
   }
-  
-  if (PIN_KEY_LOCK_IN == ILL_KEY_LOCK_FAULT) {
-    _FAULT_KEYLOCK_OPEN = 1;
+
+  ETMDigitalUpdateInput(&global_data_A36487.gun_fault_fiber, PIN_CPU_GUNDRIVER_OK_IN);
+  if (ETMDigitalFilteredOutput(&global_data_A36487.gun_fault_fiber) == ILL_PIN_GUN_FAULT) {
+    _FAULT_GUN_STATUS_FIBER = 1;
   } else {
     if (ETMCanSlaveGetSyncMsgResetEnable()) {
-      _FAULT_KEYLOCK_OPEN = 0;
+      _FAULT_GUN_STATUS_FIBER = 0;
     }
-  }
-  
-  if (PIN_CPU_RF_OK_IN == ILL_PIN_RF_FAULT) {
+  } 
+
+  ETMDigitalUpdateInput(&global_data_A36487.rf_fault_fiber, PIN_CPU_RF_OK_IN);
+  if (ETMDigitalFilteredOutput(&global_data_A36487.rf_fault_fiber) == ILL_PIN_RF_FAULT) {
     _FAULT_RF_STATUS = 1;
   } else {
     if (ETMCanSlaveGetSyncMsgResetEnable()) {
       _FAULT_RF_STATUS = 0;
     }
-  }
+  } 
+
+  ETMDigitalUpdateInput(&global_data_A36487.digital_input_panel_open, PIN_PANEL_IN);
+  if (ETMDigitalFilteredOutput(&global_data_A36487.digital_input_panel_open) == ILL_PANEL_OPEN) {
+    _FAULT_PANEL_OPEN = 1;
+  } else {
+    if (ETMCanSlaveGetSyncMsgResetEnable()) {
+      _FAULT_PANEL_OPEN = 0;
+    }
+  } 
+
+  ETMDigitalUpdateInput(&global_data_A36487.digital_input_key_lock, PIN_KEY_LOCK_IN);
+  if (ETMDigitalFilteredOutput(&global_data_A36487.digital_input_key_lock) == ILL_KEY_LOCK_FAULT) {
+    _FAULT_KEYLOCK_OPEN = 1;
+  } else {
+    if (ETMCanSlaveGetSyncMsgResetEnable()) {
+      _FAULT_KEYLOCK_OPEN = 0;
+    }
+  }   
   
   if (PIN_XRAY_CMD_MISMATCH_IN == !ILL_XRAY_CMD_MISMATCH) {
     _FAULT_TIMING_MISMATCH = 1;
@@ -516,29 +539,6 @@ void DoA36487(void) {
 
     global_data_A36487.led_flash_counter++;
 
-
-    ETMDigitalUpdateInput(&global_data_A36487.pfn_fan_fault, PIN_CPU_PFN_OK_IN);
-    
-    if (ETMDigitalFilteredOutput(&global_data_A36487.pfn_fan_fault) == ILL_PIN_PFN_FAULT) {
-      _FAULT_PFN_STATUS = 1;
-    } else {
-      if (ETMCanSlaveGetSyncMsgResetEnable()) {
-	_FAULT_PFN_STATUS = 0;
-      }
-    }
-
-    ETMDigitalUpdateInput(&global_data_A36487.gun_fault_fiber, PIN_CPU_GUNDRIVER_OK_IN);
-    if (ETMDigitalFilteredOutput(&global_data_A36487.gun_fault_fiber) == ILL_PIN_GUN_FAULT) {
-      _FAULT_GUN_STATUS_FIBER = 1;
-    } else {
-      if (ETMCanSlaveGetSyncMsgResetEnable()) {
-	_FAULT_GUN_STATUS_FIBER = 0;
-      }
-    } 
-    
-    
-    // DPARKER - ADD FILTER AND FAULT FOR GUN FAULT
-    
 
     
     // -------------- UPDATE LED AND STATUS LINE OUTPUTS ---------------- //
@@ -774,69 +774,6 @@ void DoPostTriggerProcess(void) {
 
   ProgramShiftRegistersGrid(global_data_A36487.this_pulse_width);
 
-
-  switch (GetThisPulseLevel())
-    {
-    case PULSE_LEVEL_CARGO_HIGH:
-      PIN_GUN_CAB_SCAN_FIBER_OUT = !OLL_GUN_CAB_SCAN_SELECTED;
-      PIN_ENERGY_CPU_OUT = OLL_ENERGY_LEVEL_HIGH;
-      PIN_HVPS_POLARITY_OUT = OLL_POLARITY_NORMAL;
-      PIN_AFC_TRIGGER_ENABLE_OUT = OLL_AFC_TRIGGER_ENABLE;
-      // Adjust trigger frequency for self trigger mode
-      if (trigger_set_point_active_decihertz != trigger_set_high_energy_decihertz) {
-	trigger_set_point_active_decihertz = trigger_set_high_energy_decihertz;
-	SetupT3PRFDeciHertz(trigger_set_point_active_decihertz);
-      }
-      break;
-
-    case PULSE_LEVEL_CARGO_LOW:
-      PIN_GUN_CAB_SCAN_FIBER_OUT = !OLL_GUN_CAB_SCAN_SELECTED;
-      PIN_ENERGY_CPU_OUT = !OLL_ENERGY_LEVEL_HIGH;      
-      PIN_HVPS_POLARITY_OUT = OLL_POLARITY_NORMAL;
-      PIN_AFC_TRIGGER_ENABLE_OUT = OLL_AFC_TRIGGER_ENABLE;
-      if (global_data_A36487.this_pulse_level != global_data_A36487.next_pulse_level) {
-	PIN_AFC_TRIGGER_ENABLE_OUT = !OLL_AFC_TRIGGER_ENABLE;
-      }
-      // Adjust trigger frequency for self trigger mode
-      if (trigger_set_point_active_decihertz != trigger_set_low_energy_decihertz) {
-	trigger_set_point_active_decihertz = trigger_set_low_energy_decihertz;
-	SetupT3PRFDeciHertz(trigger_set_point_active_decihertz);
-      } 
-      break;
-      
-      // DPARKER - THE POLARITY LEVELS MAKE NO SENSE HERE
-    case PULSE_LEVEL_CAB_HIGH:
-      PIN_GUN_CAB_SCAN_FIBER_OUT = OLL_GUN_CAB_SCAN_SELECTED;
-      PIN_ENERGY_CPU_OUT = OLL_ENERGY_LEVEL_HIGH;
-      PIN_HVPS_POLARITY_OUT = !OLL_POLARITY_NORMAL;
-      PIN_AFC_TRIGGER_ENABLE_OUT = OLL_AFC_TRIGGER_ENABLE;
-      // Adjust trigger frequency for self trigger mode
-      if (trigger_set_point_active_decihertz != trigger_set_high_energy_decihertz) {
-	trigger_set_point_active_decihertz = trigger_set_high_energy_decihertz;
-	SetupT3PRFDeciHertz(trigger_set_point_active_decihertz);
-      }
-      break;
-      
-    case PULSE_LEVEL_CAB_LOW:
-      PIN_GUN_CAB_SCAN_FIBER_OUT = OLL_GUN_CAB_SCAN_SELECTED;
-      PIN_ENERGY_CPU_OUT = OLL_ENERGY_LEVEL_HIGH;
-      PIN_HVPS_POLARITY_OUT = OLL_POLARITY_NORMAL;
-      PIN_AFC_TRIGGER_ENABLE_OUT = OLL_AFC_TRIGGER_ENABLE;
-      // Adjust trigger frequency for self trigger mode
-      if (trigger_set_point_active_decihertz != trigger_set_low_energy_decihertz) {
-	trigger_set_point_active_decihertz = trigger_set_low_energy_decihertz;
-	SetupT3PRFDeciHertz(trigger_set_point_active_decihertz);
-      } 
-      break;
-
-    case PULSE_LEVEL_OFF:
-      // DPARKER - Disable Pulsing
-      break;
-
-    default:
-      break;
-    }
-
   // Update the PRF
   global_data_A36487.period_filtered = RCFilterNTau(global_data_A36487.period_filtered, global_data_A36487.last_period, RC_FILTER_4_TAU);
   
@@ -1055,11 +992,6 @@ void UpdateEnergyAndPolarityOutputs(void) {
       PIN_ENERGY_CPU_OUT = OLL_ENERGY_LEVEL_HIGH;
       PIN_HVPS_POLARITY_OUT = OLL_POLARITY_NORMAL;
       PIN_AFC_TRIGGER_ENABLE_OUT = OLL_AFC_TRIGGER_ENABLE;
-      // Adjust trigger frequency for self trigger mode
-      if (trigger_set_point_active_decihertz != trigger_set_high_energy_decihertz) {
-	trigger_set_point_active_decihertz = trigger_set_high_energy_decihertz;
-	SetupT3PRFDeciHertz(trigger_set_point_active_decihertz);
-      }
       break;
       
     case PULSE_LEVEL_CARGO_LOW:
@@ -1070,11 +1002,6 @@ void UpdateEnergyAndPolarityOutputs(void) {
       if (global_data_A36487.this_pulse_level != global_data_A36487.next_pulse_level) {
 	PIN_AFC_TRIGGER_ENABLE_OUT = !OLL_AFC_TRIGGER_ENABLE;
       }
-      // Adjust trigger frequency for self trigger mode
-      if (trigger_set_point_active_decihertz != trigger_set_low_energy_decihertz) {
-	trigger_set_point_active_decihertz = trigger_set_low_energy_decihertz;
-	SetupT3PRFDeciHertz(trigger_set_point_active_decihertz);
-      } 
       break;
       
     case PULSE_LEVEL_CAB_HIGH:
@@ -1082,11 +1009,6 @@ void UpdateEnergyAndPolarityOutputs(void) {
       PIN_ENERGY_CPU_OUT = OLL_ENERGY_LEVEL_HIGH;
       PIN_HVPS_POLARITY_OUT = OLL_POLARITY_NORMAL;
       PIN_AFC_TRIGGER_ENABLE_OUT = OLL_AFC_TRIGGER_ENABLE;
-      // Adjust trigger frequency for self trigger mode
-      if (trigger_set_point_active_decihertz != trigger_set_high_energy_decihertz) {
-	trigger_set_point_active_decihertz = trigger_set_high_energy_decihertz;
-	SetupT3PRFDeciHertz(trigger_set_point_active_decihertz);
-      }
       break;
       
     case PULSE_LEVEL_CAB_LOW:
@@ -1094,11 +1016,9 @@ void UpdateEnergyAndPolarityOutputs(void) {
       PIN_ENERGY_CPU_OUT = OLL_ENERGY_LEVEL_HIGH;
       PIN_HVPS_POLARITY_OUT = !OLL_POLARITY_NORMAL;
       PIN_AFC_TRIGGER_ENABLE_OUT = OLL_AFC_TRIGGER_ENABLE;
-      // Adjust trigger frequency for self trigger mode
-      if (trigger_set_point_active_decihertz != trigger_set_low_energy_decihertz) {
-	trigger_set_point_active_decihertz = trigger_set_low_energy_decihertz;
-	SetupT3PRFDeciHertz(trigger_set_point_active_decihertz);
-      } 
+      if (global_data_A36487.this_pulse_level != global_data_A36487.next_pulse_level) {
+	PIN_AFC_TRIGGER_ENABLE_OUT = !OLL_AFC_TRIGGER_ENABLE;
+      }
       break;
       
     case PULSE_LEVEL_OFF:
@@ -1108,6 +1028,13 @@ void UpdateEnergyAndPolarityOutputs(void) {
     default:
       break;
     }
+
+  // DPARKER - Should this move somewhere else???
+  // Adjust trigger frequency for self trigger mode
+  if (trigger_set_point_active_decihertz != trigger_set_high_energy_decihertz) {
+    trigger_set_point_active_decihertz = trigger_set_high_energy_decihertz;
+    SetupT3PRFDeciHertz(trigger_set_point_active_decihertz);
+  }
 }
 
 
@@ -1169,7 +1096,7 @@ int SendPersonalityToPLC(unsigned char id) {
   PIN_ANALOG_READ_COMPLETE_OUT = OLL_ANALOG_READ_COMPLETE;    //PLCin = 0
   __delay32(DELAY_PLC); // 250ms for 10M TCY
   if (PIN_PACKAGE_VALID_IN == ILL_PACKAGE_VALID) {
-      ret = 1;       //Failure to Communicate
+    ret = 1;       //Failure to Communicate
   }
   
   if (id == 0) {
