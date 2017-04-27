@@ -4,10 +4,19 @@
   DPARKER need to figure out and extend the ETM Can functions for high, low, cab scan mode so that all modules are more generic
 */
 
-
 #define DOSE_COMMAND_LOW_ENERGY   0  
 #define DOSE_COMMAND_HIGH_ENERGY  1
-#define DOSE_COMMAND_CAB_SCAN     2
+
+
+#define PULSE_LEVEL_CARGO_HIGH    2
+#define PULSE_LEVEL_CARGO_LOW     3
+#define PULSE_LEVEL_CAB_HIGH      4
+#define PULSE_LEVEL_CAB_LOW       5
+#define PULSE_LEVEL_OFF           6
+
+
+
+
 // DPARKER - Move these to the CAN Module - All boards need to know if the energy is commanded high or low
 // They need to be incorporated into the can_slave modules
 
@@ -765,50 +774,72 @@ void DoPostTriggerProcess(void) {
 
   ProgramShiftRegistersGrid(global_data_A36487.this_pulse_width);
 
-  if (GetThisPulseLevel() == DOSE_COMMAND_HIGH_ENERGY) {
-    PIN_ENERGY_CPU_OUT = OLL_ENERGY_LEVEL_HIGH;
-  } else {
-    PIN_ENERGY_CPU_OUT = !OLL_ENERGY_LEVEL_HIGH;
-  }  
-  
-  PIN_HVPS_POLARITY_OUT = OLL_POLARITY_NORMAL;
-  if (GetThisPulseLevel() == DOSE_COMMAND_CAB_SCAN) {
-    PIN_ENERGY_CPU_OUT = OLL_ENERGY_LEVEL_HIGH;
-    PIN_GUN_CAB_SCAN_FIBER_OUT = OLL_GUN_CAB_SCAN_SELECTED;
-    if (global_data_A36487.this_pulse_level == DOSE_COMMAND_HIGH_ENERGY) {
-      // DPARKER THIS MAKES NO SENSE
-      // we need to force the PFN Control Board to low energy
+
+  switch (GetThisPulseLevel())
+    {
+    case PULSE_LEVEL_CARGO_HIGH:
+      PIN_GUN_CAB_SCAN_FIBER_OUT = !OLL_GUN_CAB_SCAN_SELECTED;
+      PIN_ENERGY_CPU_OUT = OLL_ENERGY_LEVEL_HIGH;
+      PIN_HVPS_POLARITY_OUT = OLL_POLARITY_NORMAL;
+      PIN_AFC_TRIGGER_ENABLE_OUT = OLL_AFC_TRIGGER_ENABLE;
+      // Adjust trigger frequency for self trigger mode
+      if (trigger_set_point_active_decihertz != trigger_set_high_energy_decihertz) {
+	trigger_set_point_active_decihertz = trigger_set_high_energy_decihertz;
+	SetupT3PRFDeciHertz(trigger_set_point_active_decihertz);
+      }
+      break;
+
+    case PULSE_LEVEL_CARGO_LOW:
+      PIN_GUN_CAB_SCAN_FIBER_OUT = !OLL_GUN_CAB_SCAN_SELECTED;
+      PIN_ENERGY_CPU_OUT = !OLL_ENERGY_LEVEL_HIGH;      
+      PIN_HVPS_POLARITY_OUT = OLL_POLARITY_NORMAL;
+      PIN_AFC_TRIGGER_ENABLE_OUT = OLL_AFC_TRIGGER_ENABLE;
+      if (global_data_A36487.this_pulse_level != global_data_A36487.next_pulse_level) {
+	PIN_AFC_TRIGGER_ENABLE_OUT = !OLL_AFC_TRIGGER_ENABLE;
+      }
+      // Adjust trigger frequency for self trigger mode
+      if (trigger_set_point_active_decihertz != trigger_set_low_energy_decihertz) {
+	trigger_set_point_active_decihertz = trigger_set_low_energy_decihertz;
+	SetupT3PRFDeciHertz(trigger_set_point_active_decihertz);
+      } 
+      break;
+      
+      // DPARKER - THE POLARITY LEVELS MAKE NO SENSE HERE
+    case PULSE_LEVEL_CAB_HIGH:
+      PIN_GUN_CAB_SCAN_FIBER_OUT = OLL_GUN_CAB_SCAN_SELECTED;
+      PIN_ENERGY_CPU_OUT = OLL_ENERGY_LEVEL_HIGH;
       PIN_HVPS_POLARITY_OUT = !OLL_POLARITY_NORMAL;
+      PIN_AFC_TRIGGER_ENABLE_OUT = OLL_AFC_TRIGGER_ENABLE;
+      // Adjust trigger frequency for self trigger mode
+      if (trigger_set_point_active_decihertz != trigger_set_high_energy_decihertz) {
+	trigger_set_point_active_decihertz = trigger_set_high_energy_decihertz;
+	SetupT3PRFDeciHertz(trigger_set_point_active_decihertz);
+      }
+      break;
+      
+    case PULSE_LEVEL_CAB_LOW:
+      PIN_GUN_CAB_SCAN_FIBER_OUT = OLL_GUN_CAB_SCAN_SELECTED;
+      PIN_ENERGY_CPU_OUT = OLL_ENERGY_LEVEL_HIGH;
+      PIN_HVPS_POLARITY_OUT = OLL_POLARITY_NORMAL;
+      PIN_AFC_TRIGGER_ENABLE_OUT = OLL_AFC_TRIGGER_ENABLE;
+      // Adjust trigger frequency for self trigger mode
+      if (trigger_set_point_active_decihertz != trigger_set_low_energy_decihertz) {
+	trigger_set_point_active_decihertz = trigger_set_low_energy_decihertz;
+	SetupT3PRFDeciHertz(trigger_set_point_active_decihertz);
+      } 
+      break;
+
+    case PULSE_LEVEL_OFF:
+      // DPARKER - Disable Pulsing
+      break;
+
+    default:
+      break;
     }
-  } else {
-    PIN_GUN_CAB_SCAN_FIBER_OUT = !OLL_GUN_CAB_SCAN_SELECTED;
-  }
-
-
-  PIN_AFC_TRIGGER_ENABLE_OUT = OLL_AFC_TRIGGER_ENABLE;
-
-#ifdef __TRIGGER_AFC_HIGH_ONLY
-  if ((GetThisPulseLevel() != DOSE_COMMAND_HIGH_ENERGY) && (PIN_HIGH_MODE_IN = ILL_MODE_BIT_SELECTED)) {
-    PIN_AFC_TRIGGER_ENABLE_OUT = !OLL_AFC_TRIGGER_ENABLE;
-  }
-#endif  
-
-  global_data_A36487.period_filtered = RCFilterNTau(global_data_A36487.period_filtered, global_data_A36487.last_period, RC_FILTER_4_TAU);  // Update the PRF
 
   // Update the PRF
-  if (GetThisPulseLevel() == DOSE_COMMAND_HIGH_ENERGY) {
-    if (trigger_set_point_active_decihertz != trigger_set_high_energy_decihertz) {
-      trigger_set_point_active_decihertz = trigger_set_high_energy_decihertz;
-      SetupT3PRFDeciHertz(trigger_set_point_active_decihertz);
-    }
-  } else {
-    if (trigger_set_point_active_decihertz != trigger_set_low_energy_decihertz) {
-      trigger_set_point_active_decihertz = trigger_set_low_energy_decihertz;
-      SetupT3PRFDeciHertz(trigger_set_point_active_decihertz);
-    }
-  }
-
-
+  global_data_A36487.period_filtered = RCFilterNTau(global_data_A36487.period_filtered, global_data_A36487.last_period, RC_FILTER_4_TAU);
+  
   if (ETMCanSlaveGetSyncMsgHighSpeedLogging()) {
     // Log Pulse by Pulse data
     ETMCanSlaveLogPulseData(ETM_CAN_DATA_LOG_REGISTER_PULSE_SYNC_FAST_LOG_0,
@@ -827,19 +858,45 @@ void ProgramShiftRegistersDelays(void) {
   unsigned char magnetron_sample_delay;
   unsigned char afc_sample_delay;
   
-  if (GetThisPulseLevel() == DOSE_COMMAND_HIGH_ENERGY) {
-    hv_trigger_delay = dose_sample_delay_high;
-    pfn_trigger_delay = pfn_delay_high;
-    magnetron_sample_delay = magnetron_current_sample_delay_high;
-    afc_sample_delay = afc_delay_high;
-  } else {
-    hv_trigger_delay = dose_sample_delay_low;
-    pfn_trigger_delay = pfn_delay_low;
-    magnetron_sample_delay = magnetron_current_sample_delay_low;
-    afc_sample_delay = afc_delay_low;
-  }
-  
 
+  switch (GetThisPulseLevel())
+    {
+    case PULSE_LEVEL_CARGO_HIGH:
+      hv_trigger_delay = dose_sample_delay_high;
+      pfn_trigger_delay = pfn_delay_high;
+      magnetron_sample_delay = magnetron_current_sample_delay_high;
+      afc_sample_delay = afc_delay_high;
+      break;
+      
+    case PULSE_LEVEL_CARGO_LOW:
+      hv_trigger_delay = dose_sample_delay_low;
+      pfn_trigger_delay = pfn_delay_low;
+      magnetron_sample_delay = magnetron_current_sample_delay_low;
+      afc_sample_delay = afc_delay_low;
+      break;
+      
+    case PULSE_LEVEL_CAB_HIGH:
+      hv_trigger_delay = dose_sample_delay_high;
+      pfn_trigger_delay = pfn_delay_high;
+      magnetron_sample_delay = magnetron_current_sample_delay_high;
+      afc_sample_delay = afc_delay_high;
+      break;
+      
+    case PULSE_LEVEL_CAB_LOW:
+      hv_trigger_delay = dose_sample_delay_low;
+      pfn_trigger_delay = pfn_delay_low;
+      magnetron_sample_delay = magnetron_current_sample_delay_low;
+      afc_sample_delay = afc_delay_low;
+      break;
+
+    case PULSE_LEVEL_OFF:
+      // DPARKER - Disable Pulsing
+      break;
+
+    default:
+      break;
+    }
+  
   // Send out the PFN & HV trigger delays
   data   = hv_trigger_delay;
   data <<= 8;
@@ -861,23 +918,47 @@ void ProgramShiftRegistersDelays(void) {
   Nop();
 }
 
-#define CAB_SCAN_GRID_START   110
-#define CAB_SCAN_GRID_STOP    115
+#define CAB_SCAN_GRID_START_HIGH   110
+#define CAB_SCAN_GRID_STOP_HIGH    115
+
+#define CAB_SCAN_GRID_START_LOW    110
+#define CAB_SCAN_GRID_STOP_LOW     115
 
 void ProgramShiftRegistersGrid(unsigned char dose_command) {
   unsigned int data;
 
-  if (GetThisPulseLevel() == DOSE_COMMAND_HIGH_ENERGY) {
-    data_grid_stop  = InterpolateValue(grid_stop_high0, grid_stop_high1, grid_stop_high2, grid_stop_high3, dose_command);
-    data_grid_start = InterpolateValue(grid_start_high0, grid_start_high1, grid_start_high2, grid_start_high3, dose_command);
-  } else if (GetThisPulseLevel() == DOSE_COMMAND_LOW_ENERGY) {
-    data_grid_stop  = InterpolateValue(grid_stop_low0, grid_stop_low1, grid_stop_low2, grid_stop_low3, dose_command);
-    data_grid_start = InterpolateValue(grid_start_low0, grid_start_low1, grid_start_low2, grid_start_low3, dose_command);
-  } else {
-    data_grid_stop  = CAB_SCAN_GRID_STOP;
-    data_grid_start = CAB_SCAN_GRID_START;
-  }
-  
+
+  switch (GetThisPulseLevel())
+    {
+    case PULSE_LEVEL_CARGO_HIGH:
+      data_grid_stop  = InterpolateValue(grid_stop_high0, grid_stop_high1, grid_stop_high2, grid_stop_high3, dose_command);
+      data_grid_start = InterpolateValue(grid_start_high0, grid_start_high1, grid_start_high2, grid_start_high3, dose_command);
+      break;
+      
+    case PULSE_LEVEL_CARGO_LOW:
+      data_grid_stop  = InterpolateValue(grid_stop_low0, grid_stop_low1, grid_stop_low2, grid_stop_low3, dose_command);
+      data_grid_start = InterpolateValue(grid_start_low0, grid_start_low1, grid_start_low2, grid_start_low3, dose_command);
+      break;
+      
+    case PULSE_LEVEL_CAB_HIGH:
+      data_grid_start = CAB_SCAN_GRID_START_HIGH;
+      data_grid_stop  = CAB_SCAN_GRID_STOP_HIGH;
+      break;
+      
+    case PULSE_LEVEL_CAB_LOW:
+      data_grid_start = CAB_SCAN_GRID_START_LOW;
+      data_grid_stop  = CAB_SCAN_GRID_STOP_LOW;
+      break;
+
+    case PULSE_LEVEL_OFF:
+      data_grid_start = 0;
+      data_grid_stop  = 0;
+      break;
+
+    default:
+      break;
+    }
+
   // Send out Grid start and stop delays
   data   = data_grid_stop;
   data <<= 8;
@@ -892,25 +973,43 @@ void ProgramShiftRegistersGrid(unsigned char dose_command) {
 
 unsigned int GetThisPulseLevel(void) {
 #ifdef __PLC_INTERFACE
-  if ((PIN_LOW_MODE_IN == ILL_MODE_BIT_SELECTED) && (PIN_HIGH_MODE_IN == !ILL_MODE_BIT_SELECTED)) {
-    // CAB SCAN
-    return DOSE_COMMAND_CAB_SCAN;
+  // CARGO SCAN Mode  
+  if ((PIN_LOW_MODE_IN == ILL_MODE_BIT_SELECTED) && (PIN_HIGH_MODE_IN == ILL_MODE_BIT_SELECTED)) {
+    if (global_data_A36487.this_pulse_level == DOSE_COMMAND_HIGH_ENERGY) {
+      return PULSE_LEVEL_CARGO_HIGH;
+    } else {
+      return PULSE_LEVEL_CARGO_LOW;
+    }
   }
 
+  // CAB SCAN Mode
+  if ((PIN_LOW_MODE_IN == ILL_MODE_BIT_SELECTED) && (PIN_HIGH_MODE_IN == !ILL_MODE_BIT_SELECTED)) {
+    if (global_data_A36487.this_pulse_level == DOSE_COMMAND_HIGH_ENERGY) {
+      return PULSE_LEVEL_CAB_HIGH;
+    } else {
+      return PULSE_LEVEL_CAB_LOW;
+    }
+  }
+
+
+  // HIGH MODE ONLY  
   if ((PIN_LOW_MODE_IN == !ILL_MODE_BIT_SELECTED) && (PIN_HIGH_MODE_IN == ILL_MODE_BIT_SELECTED)) {
-    // HIGH MODE ONLY
-    return DOSE_COMMAND_HIGH_ENERGY;
+    return PULSE_LEVEL_CARGO_HIGH;
   }
   
-  return global_data_A36487.this_pulse_level;
+
+  // X Ray Off
+  return PULSE_LEVEL_OFF;
 
 #else
   
+  // DPARKER THIS NEEDS MORE WORK I THINK FOR ALL OF THE NON-PLC Based systems
+  
   if (PIN_HIGH_MODE_IN == ILL_MODE_BIT_SELECTED) {
-    return DOSE_COMMAND_HIGH_ENERGY;
+    return PULSE_LEVEL_CARGO_HIGH;
   }
   
-  return DOSE_COMMAND_LOW_ENERGY;
+  return PULSE_LEVEL_CARGO_LOW;
 #endif
   
 }
@@ -946,6 +1045,70 @@ unsigned char InterpolateValue(unsigned int val_0, unsigned int val_1, unsigned 
   return result;
 }
 
+
+
+void UpdateEnergyAndPolarityOutputs(void) {
+  switch (GetThisPulseLevel())
+    {
+    case PULSE_LEVEL_CARGO_HIGH:
+      PIN_GUN_CAB_SCAN_FIBER_OUT = !OLL_GUN_CAB_SCAN_SELECTED;
+      PIN_ENERGY_CPU_OUT = OLL_ENERGY_LEVEL_HIGH;
+      PIN_HVPS_POLARITY_OUT = OLL_POLARITY_NORMAL;
+      PIN_AFC_TRIGGER_ENABLE_OUT = OLL_AFC_TRIGGER_ENABLE;
+      // Adjust trigger frequency for self trigger mode
+      if (trigger_set_point_active_decihertz != trigger_set_high_energy_decihertz) {
+	trigger_set_point_active_decihertz = trigger_set_high_energy_decihertz;
+	SetupT3PRFDeciHertz(trigger_set_point_active_decihertz);
+      }
+      break;
+      
+    case PULSE_LEVEL_CARGO_LOW:
+      PIN_GUN_CAB_SCAN_FIBER_OUT = !OLL_GUN_CAB_SCAN_SELECTED;
+      PIN_ENERGY_CPU_OUT = !OLL_ENERGY_LEVEL_HIGH;      
+      PIN_HVPS_POLARITY_OUT = OLL_POLARITY_NORMAL;
+      PIN_AFC_TRIGGER_ENABLE_OUT = OLL_AFC_TRIGGER_ENABLE;
+      if (global_data_A36487.this_pulse_level != global_data_A36487.next_pulse_level) {
+	PIN_AFC_TRIGGER_ENABLE_OUT = !OLL_AFC_TRIGGER_ENABLE;
+      }
+      // Adjust trigger frequency for self trigger mode
+      if (trigger_set_point_active_decihertz != trigger_set_low_energy_decihertz) {
+	trigger_set_point_active_decihertz = trigger_set_low_energy_decihertz;
+	SetupT3PRFDeciHertz(trigger_set_point_active_decihertz);
+      } 
+      break;
+      
+    case PULSE_LEVEL_CAB_HIGH:
+      PIN_GUN_CAB_SCAN_FIBER_OUT = OLL_GUN_CAB_SCAN_SELECTED;
+      PIN_ENERGY_CPU_OUT = OLL_ENERGY_LEVEL_HIGH;
+      PIN_HVPS_POLARITY_OUT = OLL_POLARITY_NORMAL;
+      PIN_AFC_TRIGGER_ENABLE_OUT = OLL_AFC_TRIGGER_ENABLE;
+      // Adjust trigger frequency for self trigger mode
+      if (trigger_set_point_active_decihertz != trigger_set_high_energy_decihertz) {
+	trigger_set_point_active_decihertz = trigger_set_high_energy_decihertz;
+	SetupT3PRFDeciHertz(trigger_set_point_active_decihertz);
+      }
+      break;
+      
+    case PULSE_LEVEL_CAB_LOW:
+      PIN_GUN_CAB_SCAN_FIBER_OUT = OLL_GUN_CAB_SCAN_SELECTED;
+      PIN_ENERGY_CPU_OUT = OLL_ENERGY_LEVEL_HIGH;
+      PIN_HVPS_POLARITY_OUT = !OLL_POLARITY_NORMAL;
+      PIN_AFC_TRIGGER_ENABLE_OUT = OLL_AFC_TRIGGER_ENABLE;
+      // Adjust trigger frequency for self trigger mode
+      if (trigger_set_point_active_decihertz != trigger_set_low_energy_decihertz) {
+	trigger_set_point_active_decihertz = trigger_set_low_energy_decihertz;
+	SetupT3PRFDeciHertz(trigger_set_point_active_decihertz);
+      } 
+      break;
+      
+    case PULSE_LEVEL_OFF:
+      // DPARKER - Disable Pulsing
+      break;
+      
+    default:
+      break;
+    }
+}
 
 
 
@@ -1177,6 +1340,9 @@ void __attribute__((interrupt, no_auto_psv)) _T3Interrupt(void) {
   trigger_width = 0xFF;
   trigger_width_filtered = 0xFF;
   global_data_A36487.this_pulse_width = 0xFF;
+
+  UpdateEnergyAndPolarityOutputs();
+
 #endif
   _T3IF = 0;
 }
@@ -1248,13 +1414,8 @@ void __attribute__((interrupt, shadow, no_auto_psv)) _INT1Interrupt(void) {
 
       // DPARKER - REDUCE THIS DELAY TO ACCOUNT FOR THE TIME IT TAKES TO GET HERE
       __delay32(300);  // Delay 30 uS
-
-      // DPARKER - IT is possible for This PIN output to get overwritten if there is some other process on this LAT register that gets interrupted
-      if (GetThisPulseLevel() == DOSE_COMMAND_HIGH_ENERGY) {
-	PIN_ENERGY_CPU_OUT = OLL_ENERGY_LEVEL_HIGH;
-      } else {
-	PIN_ENERGY_CPU_OUT = !OLL_ENERGY_LEVEL_HIGH;
-      }  
+      
+      UpdateEnergyAndPolarityOutputs();
     }
   }
   PIN_CPU_START_OUT = !OLL_CPU_START;
@@ -1294,7 +1455,7 @@ void __attribute__((interrupt(__save__(CORCON,SR)), no_auto_psv)) _U2RXInterrupt
       
       trigger_width = uart2_input_buffer[1];
       trigger_width_filtered = uart2_input_buffer[1];
-      
+
       global_data_A36487.trigger_width_update_ready = 1;
       global_data_A36487.message_received = 1;
       global_data_A36487.message_received_count++;
