@@ -363,9 +363,9 @@ void InitializeA36487(void) {
   ConfigureSPI(ETM_SPI_PORT_2, ETM_DEFAULT_SPI_CON_VALUE, ETM_DEFAULT_SPI_CON2_VALUE, ETM_DEFAULT_SPI_STAT_VALUE, SPI_CLK_5_MBIT, FCY);
   
   // Initialize the digital faults
-  ETMDigitalInitializeInput(&global_data_A36487.pfn_fan_fault, ILL_PIN_PFN_FAULT, 50);
-  ETMDigitalInitializeInput(&global_data_A36487.gun_fault_fiber, ILL_PIN_GUN_FAULT, 10);
-  ETMDigitalInitializeInput(&global_data_A36487.rf_fault_fiber, ILL_PIN_GUN_FAULT, 10);
+  ETMDigitalInitializeInput(&global_data_A36487.pfn_fan_fault, ILL_PIN_PFN_FAULT, 20);
+  ETMDigitalInitializeInput(&global_data_A36487.gun_fault_fiber, ILL_PIN_GUN_FAULT, 20);
+  ETMDigitalInitializeInput(&global_data_A36487.rf_fault_fiber, ILL_PIN_GUN_FAULT, 20);
   ETMDigitalInitializeInput(&global_data_A36487.digital_input_key_lock, ILL_KEY_LOCK_FAULT, 50);
   ETMDigitalInitializeInput(&global_data_A36487.digital_input_panel_open, ILL_PANEL_OPEN, 50);
 
@@ -474,7 +474,7 @@ void DoA36487(void) {
       _FAULT_PFN_STATUS = 0;
     }
   }
-
+  
   ETMDigitalUpdateInput(&global_data_A36487.gun_fault_fiber, PIN_CPU_GUNDRIVER_OK_IN);
   if (ETMDigitalFilteredOutput(&global_data_A36487.gun_fault_fiber) == ILL_PIN_GUN_FAULT) {
     _FAULT_GUN_STATUS_FIBER = 1;
@@ -493,23 +493,6 @@ void DoA36487(void) {
     }
   } 
 
-  ETMDigitalUpdateInput(&global_data_A36487.digital_input_panel_open, PIN_PANEL_IN);
-  if (ETMDigitalFilteredOutput(&global_data_A36487.digital_input_panel_open) == ILL_PANEL_OPEN) {
-    _FAULT_PANEL_OPEN = 1;
-  } else {
-    if (ETMCanSlaveGetSyncMsgResetEnable()) {
-      _FAULT_PANEL_OPEN = 0;
-    }
-  } 
-
-  ETMDigitalUpdateInput(&global_data_A36487.digital_input_key_lock, PIN_KEY_LOCK_IN);
-  if (ETMDigitalFilteredOutput(&global_data_A36487.digital_input_key_lock) == ILL_KEY_LOCK_FAULT) {
-    _FAULT_KEYLOCK_OPEN = 1;
-  } else {
-    if (ETMCanSlaveGetSyncMsgResetEnable()) {
-      _FAULT_KEYLOCK_OPEN = 0;
-    }
-  }   
   
   if (PIN_XRAY_CMD_MISMATCH_IN == !ILL_XRAY_CMD_MISMATCH) {
     _FAULT_TIMING_MISMATCH = 1;
@@ -539,7 +522,25 @@ void DoA36487(void) {
 
     global_data_A36487.led_flash_counter++;
 
-
+    
+    ETMDigitalUpdateInput(&global_data_A36487.digital_input_panel_open, PIN_PANEL_IN);
+    if (ETMDigitalFilteredOutput(&global_data_A36487.digital_input_panel_open) == ILL_PANEL_OPEN) {
+      _FAULT_PANEL_OPEN = 1;
+    } else {
+      if (ETMCanSlaveGetSyncMsgResetEnable()) {
+	_FAULT_PANEL_OPEN = 0;
+      }
+    } 
+    
+    ETMDigitalUpdateInput(&global_data_A36487.digital_input_key_lock, PIN_KEY_LOCK_IN);
+    if (ETMDigitalFilteredOutput(&global_data_A36487.digital_input_key_lock) == ILL_KEY_LOCK_FAULT) {
+      _FAULT_KEYLOCK_OPEN = 1;
+    } else {
+      if (ETMCanSlaveGetSyncMsgResetEnable()) {
+	_FAULT_KEYLOCK_OPEN = 0;
+      }
+    }   
+    
     
     // -------------- UPDATE LED AND STATUS LINE OUTPUTS ---------------- //
     if (ETMCanSlaveGetSyncMsgPulseSyncWarmupLED()) {
@@ -940,7 +941,7 @@ unsigned int GetThisPulseLevel(void) {
 
 #else
   
-  // DPARKER THIS NEEDS MORE WORK I THINK FOR ALL OF THE NON-PLC Based systems
+  // DPARKER THIS NEEDS MORE WORK I THINK FOR ALL OF THE NON-PLC Based systems.  For example no way to get Cab scan from the 2.5
   
   if (PIN_HIGH_MODE_IN == ILL_MODE_BIT_SELECTED) {
     return PULSE_LEVEL_CARGO_HIGH;

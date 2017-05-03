@@ -34,10 +34,10 @@
   
  */
 
-#define __PLC_INTERFACE  // IF NOT, Implies Can interface 
-#define __TRIGGER_AFC_HIGH_ONLY
+//#define __PLC_INTERFACE  // IF NOT, Implies Can interface 
+//#define __TRIGGER_AFC_HIGH_ONLY
 
-//#define __INTERNAL_TRIGGER // - Does not Have Serial Dose
+#define __INTERNAL_TRIGGER // - Does not Have Serial Dose
 
 
 #define DELAY_PLC   2500000  // 2.5 million cycles
