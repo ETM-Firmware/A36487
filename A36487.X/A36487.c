@@ -855,11 +855,11 @@ void ProgramShiftRegistersDelays(void) {
   Nop();
 }
 
-#define CAB_SCAN_GRID_START_HIGH   110
-#define CAB_SCAN_GRID_STOP_HIGH    115
+#define CAB_SCAN_GRID_START_HIGH   130
+#define CAB_SCAN_GRID_STOP_HIGH    135
 
-#define CAB_SCAN_GRID_START_LOW    110
-#define CAB_SCAN_GRID_STOP_LOW     115
+#define CAB_SCAN_GRID_START_LOW    130
+#define CAB_SCAN_GRID_STOP_LOW     135
 
 void ProgramShiftRegistersGrid(unsigned char dose_command) {
   unsigned int data;
