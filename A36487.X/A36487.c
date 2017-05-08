@@ -454,7 +454,6 @@ void DoA36487(void) {
   }
 
   if ((global_data_A36487.trigger_width_update_ready) && (global_data_A36487.trigger_complete == 0)) {
-    global_data_A36487.this_pulse_width = trigger_width_filtered;
     ProgramShiftRegistersGrid(global_data_A36487.this_pulse_width);
     global_data_A36487.trigger_width_update_ready = 0;
     PIN_40US_TEST_POINT = 0;
@@ -992,6 +991,11 @@ void UpdateEnergyAndPolarityOutputs(void) {
       PIN_ENERGY_CPU_OUT = OLL_ENERGY_LEVEL_HIGH;
       PIN_HVPS_POLARITY_OUT = OLL_POLARITY_NORMAL;
       PIN_AFC_TRIGGER_ENABLE_OUT = OLL_AFC_TRIGGER_ENABLE;
+      if (global_data_A36487.this_pulse_width >= 191) {
+	PIN_PORTAL_GANTRY_MODE_OUT = OLL_GANTRY_MODE;
+      } else {
+	PIN_PORTAL_GANTRY_MODE_OUT = !OLL_GANTRY_MODE;
+      }
       break;
       
     case PULSE_LEVEL_CARGO_LOW:
@@ -1002,6 +1006,11 @@ void UpdateEnergyAndPolarityOutputs(void) {
       if (global_data_A36487.this_pulse_level != global_data_A36487.next_pulse_level) {
 	PIN_AFC_TRIGGER_ENABLE_OUT = !OLL_AFC_TRIGGER_ENABLE;
       }
+      if (global_data_A36487.this_pulse_width >= 191) {
+	PIN_PORTAL_GANTRY_MODE_OUT = OLL_GANTRY_MODE;
+      } else {
+	PIN_PORTAL_GANTRY_MODE_OUT = !OLL_GANTRY_MODE;
+      }
       break;
       
     case PULSE_LEVEL_CAB_HIGH:
@@ -1009,6 +1018,7 @@ void UpdateEnergyAndPolarityOutputs(void) {
       PIN_ENERGY_CPU_OUT = OLL_ENERGY_LEVEL_HIGH;
       PIN_HVPS_POLARITY_OUT = OLL_POLARITY_NORMAL;
       PIN_AFC_TRIGGER_ENABLE_OUT = OLL_AFC_TRIGGER_ENABLE;
+      PIN_PORTAL_GANTRY_MODE_OUT = !OLL_GANTRY_MODE;
       break;
       
     case PULSE_LEVEL_CAB_LOW:
@@ -1019,6 +1029,7 @@ void UpdateEnergyAndPolarityOutputs(void) {
       if (global_data_A36487.this_pulse_level != global_data_A36487.next_pulse_level) {
 	PIN_AFC_TRIGGER_ENABLE_OUT = !OLL_AFC_TRIGGER_ENABLE;
       }
+      PIN_PORTAL_GANTRY_MODE_OUT = !OLL_GANTRY_MODE;
       break;
       
     case PULSE_LEVEL_OFF:
@@ -1382,6 +1393,7 @@ void __attribute__((interrupt(__save__(CORCON,SR)), no_auto_psv)) _U2RXInterrupt
       
       trigger_width = uart2_input_buffer[1];
       trigger_width_filtered = uart2_input_buffer[1];
+      global_data_A36487.this_pulse_width = trigger_width_filtered;
 
       global_data_A36487.trigger_width_update_ready = 1;
       global_data_A36487.message_received = 1;
