@@ -328,7 +328,7 @@ void DoA36487(void) {
       _FAULT_KEYLOCK_OPEN = 0;
     }
   }
-
+  
   if (ETMDigitalFilteredOutput(&psb_data.panel_open) == ILL_PANEL_OPEN) {
     _FAULT_PANEL_OPEN = 1;
   } else {
@@ -341,13 +341,19 @@ void DoA36487(void) {
 
 
   if (PIN_RF_OK == ILL_PIN_RF_FAULT) {
-    _FAULT_RF_STATUS = 1;
+    __delay32(500);  // Delay 50us
+    if (PIN_RF_OK == ILL_PIN_RF_FAULT) {
+      __delay32(500);  // Delay 50us
+      if (PIN_RF_OK == ILL_PIN_RF_FAULT) {
+	_FAULT_RF_STATUS = 1;
+      }
+    }
   } else {
     if (ETMCanSlaveGetSyncMsgResetEnable()) {
       _FAULT_RF_STATUS = 0;
     }
   }
-
+  
   if (PIN_XRAY_CMD_MISMATCH_IN == !ILL_XRAY_CMD_MISMATCH) {
     _FAULT_TIMING_MISMATCH = 1;
   } else {
