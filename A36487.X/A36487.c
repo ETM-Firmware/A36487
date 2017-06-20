@@ -986,6 +986,7 @@ unsigned char InterpolateValue(unsigned int val_0, unsigned int val_1, unsigned 
 
 
 void UpdateEnergyAndPolarityOutputs(void) {
+  unsigned int selected_trigger_frequency;
   switch (GetThisPulseLevel())
     {
     case PULSE_LEVEL_CARGO_HIGH:
@@ -993,6 +994,7 @@ void UpdateEnergyAndPolarityOutputs(void) {
       PIN_ENERGY_CPU_OUT = OLL_ENERGY_LEVEL_HIGH;
       PIN_HVPS_POLARITY_OUT = OLL_POLARITY_NORMAL;
       PIN_AFC_TRIGGER_ENABLE_OUT = OLL_AFC_TRIGGER_ENABLE;
+      selected_trigger_frequency = trigger_set_high_energy_decihertz;
       break;
       
     case PULSE_LEVEL_CARGO_LOW:
@@ -1003,6 +1005,7 @@ void UpdateEnergyAndPolarityOutputs(void) {
       if (global_data_A36487.this_pulse_level != global_data_A36487.next_pulse_level) {
 	PIN_AFC_TRIGGER_ENABLE_OUT = !OLL_AFC_TRIGGER_ENABLE;
       }
+      selected_trigger_frequency = trigger_set_low_energy_decihertz;
       break;
       
     case PULSE_LEVEL_CAB_HIGH:
@@ -1010,6 +1013,7 @@ void UpdateEnergyAndPolarityOutputs(void) {
       PIN_ENERGY_CPU_OUT = OLL_ENERGY_LEVEL_HIGH;
       PIN_HVPS_POLARITY_OUT = OLL_POLARITY_NORMAL;
       PIN_AFC_TRIGGER_ENABLE_OUT = OLL_AFC_TRIGGER_ENABLE;
+      selected_trigger_frequency = trigger_set_high_energy_decihertz;
       break;
       
     case PULSE_LEVEL_CAB_LOW:
@@ -1020,6 +1024,7 @@ void UpdateEnergyAndPolarityOutputs(void) {
       if (global_data_A36487.this_pulse_level != global_data_A36487.next_pulse_level) {
 	PIN_AFC_TRIGGER_ENABLE_OUT = !OLL_AFC_TRIGGER_ENABLE;
       }
+      selected_trigger_frequency = trigger_set_low_energy_decihertz;
       break;
       
     case PULSE_LEVEL_OFF:
@@ -1032,8 +1037,9 @@ void UpdateEnergyAndPolarityOutputs(void) {
 
   // DPARKER - Should this move somewhere else???
   // Adjust trigger frequency for self trigger mode
-  if (trigger_set_point_active_decihertz != trigger_set_high_energy_decihertz) {
-    trigger_set_point_active_decihertz = trigger_set_high_energy_decihertz;
+  slave_board_data.log_data[3] = selected_trigger_frequency;  // DPARKER test
+  if (selected_trigger_frequency != trigger_set_point_active_decihertz) {
+    trigger_set_point_active_decihertz = selected_trigger_frequency;
     SetupT3PRFDeciHertz(trigger_set_point_active_decihertz);
   }
 }
