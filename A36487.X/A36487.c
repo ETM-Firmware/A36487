@@ -767,8 +767,13 @@ void DoStartupLEDs(void) {
 
 
 void DoPostTriggerProcess(void) {
-  ETMCanSlavePulseSyncSendNextPulseLevel(GetThisPulseLevel(), global_data_A36487.pulses_on, log_data_rep_rate_deci_hertz);
-  
+  // DPARKER - NEED TO BUILD NEW PULSE LEVELS INTO CAN MODULE
+  if ((GetThisPulseLevel() == PULSE_LEVEL_CARGO_HIGH) || (GetThisPulseLevel() == PULSE_LEVEL_CAB_HIGH)) {
+    ETMCanSlavePulseSyncSendNextPulseLevel(1, global_data_A36487.pulses_on, log_data_rep_rate_deci_hertz);
+  } else {
+    ETMCanSlavePulseSyncSendNextPulseLevel(0, global_data_A36487.pulses_on, log_data_rep_rate_deci_hertz);
+  }
+
   ProgramShiftRegistersDelays();  // Load the shift registers
 
   global_data_A36487.pulses_on++; // This counts the pulses
