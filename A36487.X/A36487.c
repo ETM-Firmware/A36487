@@ -1,5 +1,11 @@
 #include "A36487.h"
 
+
+#define PIN_ALTERERNATE_PFN_TRIGGER PIN_ENERGY_CPU_OUT
+#define OLL_PFN_TRIGGER_START 1
+
+
+
 /*
   DPARKER need to figure out and extend the ETM Can functions for high, low, cab scan mode so that all modules are more generic
 */
@@ -996,7 +1002,9 @@ void UpdateEnergyAndPolarityOutputs(void) {
     {
     case PULSE_LEVEL_CARGO_HIGH:
       PIN_GUN_CAB_SCAN_FIBER_OUT = !OLL_GUN_CAB_SCAN_SELECTED;
+#ifndef __ALTERNATE_PFN_TRIGGER_SOURCE
       PIN_ENERGY_CPU_OUT = OLL_ENERGY_LEVEL_HIGH;
+#endif
       PIN_HVPS_POLARITY_OUT = OLL_POLARITY_NORMAL;
       PIN_AFC_TRIGGER_ENABLE_OUT = OLL_AFC_TRIGGER_ENABLE;
       selected_trigger_frequency = trigger_set_high_energy_decihertz;
@@ -1004,7 +1012,9 @@ void UpdateEnergyAndPolarityOutputs(void) {
       
     case PULSE_LEVEL_CARGO_LOW:
       PIN_GUN_CAB_SCAN_FIBER_OUT = !OLL_GUN_CAB_SCAN_SELECTED;
-      PIN_ENERGY_CPU_OUT = !OLL_ENERGY_LEVEL_HIGH;      
+#ifndef __ALTERNATE_PFN_TRIGGER_SOURCE
+      PIN_ENERGY_CPU_OUT = !OLL_ENERGY_LEVEL_HIGH;
+#endif      
       PIN_HVPS_POLARITY_OUT = OLL_POLARITY_NORMAL;
       PIN_AFC_TRIGGER_ENABLE_OUT = OLL_AFC_TRIGGER_ENABLE;
       if (global_data_A36487.this_pulse_level != global_data_A36487.next_pulse_level) {
@@ -1015,7 +1025,9 @@ void UpdateEnergyAndPolarityOutputs(void) {
       
     case PULSE_LEVEL_CAB_HIGH:
       PIN_GUN_CAB_SCAN_FIBER_OUT = OLL_GUN_CAB_SCAN_SELECTED;
+#ifndef __ALTERNATE_PFN_TRIGGER_SOURCE
       PIN_ENERGY_CPU_OUT = OLL_ENERGY_LEVEL_HIGH;
+#endif
       PIN_HVPS_POLARITY_OUT = OLL_POLARITY_NORMAL;
       PIN_AFC_TRIGGER_ENABLE_OUT = OLL_AFC_TRIGGER_ENABLE;
       selected_trigger_frequency = trigger_set_high_energy_decihertz;
@@ -1023,7 +1035,9 @@ void UpdateEnergyAndPolarityOutputs(void) {
       
     case PULSE_LEVEL_CAB_LOW:
       PIN_GUN_CAB_SCAN_FIBER_OUT = OLL_GUN_CAB_SCAN_SELECTED;
+#ifndef __ALTERNATE_PFN_TRIGGER_SOURCE
       PIN_ENERGY_CPU_OUT = OLL_ENERGY_LEVEL_HIGH;
+#endif
       PIN_HVPS_POLARITY_OUT = !OLL_POLARITY_NORMAL;
       PIN_AFC_TRIGGER_ENABLE_OUT = OLL_AFC_TRIGGER_ENABLE;
       if (global_data_A36487.this_pulse_level != global_data_A36487.next_pulse_level) {
@@ -1258,15 +1272,31 @@ void ETMCanSlaveExecuteCMDBoardSpecific(ETMCanMessage* message_ptr) {
 
 
 // Trigger is generated internally
+
 void __attribute__((interrupt, no_auto_psv)) _T3Interrupt(void) {
 #ifdef __INTERNAL_TRIGGER
-  if ((global_data_A36487.control_state == STATE_X_RAY_ENABLE)) {
-    PIN_CPU_START_OUT = OLL_CPU_START;
+  if ((global_data_A36487.control_state == STATE_X_RAY_ENABLE) && PIN_CUSTOMER_XRAY_ON_IN == 1) {
+#ifdef __ALTERNATE_PFN_TRIGGER_SOURCE
+    PIN_ALTERERNATE_PFN_TRIGGER = OLL_PFN_TRIGGER_START;
+    //delay 900ns
+    Nop();
+    Nop();
+    Nop();
+    Nop();
+    Nop();
+    Nop();
+    Nop();
+    Nop();
+    Nop();
+#endif
+    PIN_CPU_START_OUT = OLL_CPU_START; // Delay between PFN and Start is 1000nS
     __delay32(300);  // Delay 30 uS
   }
   
   PIN_CPU_START_OUT = !OLL_CPU_START;
-  
+#ifdef __ALTERNATE_PFN_TRIGGER_SOURCE
+  PIN_ALTERERNATE_PFN_TRIGGER = !OLL_PFN_TRIGGER_START;
+#endif
   global_data_A36487.last_period = TMR1;
   TMR1 = 0;
   if (_T1IF) {
@@ -1303,7 +1333,20 @@ void __attribute__((interrupt, shadow, no_auto_psv)) _INT1Interrupt(void) {
     // The Trigger Pulse is Valid
     if (_T3IF) {
       // The minimum period between pulses has passed
-      if ((global_data_A36487.control_state == STATE_X_RAY_ENABLE)) {
+  if ((global_data_A36487.control_state == STATE_X_RAY_ENABLE) && (PIN_CUSTOMER_XRAY_ON_IN == 1)) {
+#ifdef __ALTERNATE_PFN_TRIGGER_SOURCE
+	PIN_ALTERERNATE_PFN_TRIGGER = OLL_PFN_TRIGGER_START;
+	//delay 900ns
+	Nop();
+	Nop();
+	Nop();
+	Nop();
+	Nop();
+	Nop();
+	Nop();
+	Nop();
+	Nop();
+#endif
 	PIN_CPU_START_OUT = OLL_CPU_START;
 	// Start The Holdoff Timer for the next pulse
 	TMR3 = 0;
@@ -1358,6 +1401,10 @@ void __attribute__((interrupt, shadow, no_auto_psv)) _INT1Interrupt(void) {
     }
   }
   PIN_CPU_START_OUT = !OLL_CPU_START;
+#ifdef __ALTERNATE_PFN_TRIGGER_SOURCE
+  PIN_ALTERERNATE_PFN_TRIGGER = !OLL_PFN_TRIGGER_START;
+#endif
+  
 #endif
   _INT1IF = 0;
 }

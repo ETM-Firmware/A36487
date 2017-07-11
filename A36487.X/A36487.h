@@ -38,7 +38,7 @@
 //#define __TRIGGER_AFC_HIGH_ONLY
 
 #define __INTERNAL_TRIGGER // - Does not Have Serial Dose
-
+#define __ALTERNATE_PFN_TRIGGER_SOURCE
 
 #define DELAY_PLC   2500000  // 2.5 million cycles
 #define MIN_PERIOD  1
