@@ -68,6 +68,12 @@ _FICD(PGD);
 
 
 int main(void) {
+  unsigned int wait;
+  wait = 0;
+  while (wait <= 500) {
+    wait++;
+    __delay32(100000);
+  } 
   global_data_A36487.control_state = STATE_INIT;
   while (1) {
     DoStateMachine();
