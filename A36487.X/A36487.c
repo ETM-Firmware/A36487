@@ -59,7 +59,7 @@ int SendPersonalityToPLC(unsigned char id);
 //Processor Setup
 _FOSC(EC & CSW_FSCM_OFF); // Primary Oscillator without PLL and Startup with User Selected Oscillator Source, CLKOUT 10MHz is used to measure trigger width.
 _FWDT(WDT_ON & WDTPSA_512 & WDTPSB_8);  // 8 Second watchdog timer 
-_FBORPOR(PWRT_64 & BORV_27 & PBOR_ON & MCLR_EN); // Brown out and Power on Timer settings
+_FBORPOR(PWRT_OFF & BORV_27 & PBOR_ON & MCLR_EN); // Brown out and Power on Timer settings
 _FBS(WR_PROTECT_BOOT_OFF & NO_BOOT_CODE & NO_BOOT_EEPROM & NO_BOOT_RAM);
 _FSS(WR_PROT_SEC_OFF & NO_SEC_CODE & NO_SEC_EEPROM & NO_SEC_RAM);
 _FGS(CODE_PROT_OFF);
@@ -69,6 +69,21 @@ _FICD(PGD);
 
 int main(void) {
   unsigned int wait;
+  _TRISB4 = 0;
+  _TRISB5 = 0;
+  _TRISC13 = 0;
+  _TRISD0 = 0;
+  _TRISD8 = 0;
+  _TRISD10 = 0;
+  
+
+  PIN_CPU_READY_OUT = 1;
+  PIN_CPU_STANDBY_OUT = 1;
+  PIN_CPU_XRAY_ENABLE_OUT = 1;
+  PIN_CPU_SUMFLT_OUT = 0;
+  PIN_CPU_HV_ENABLE_OUT = 1;
+  PIN_CPU_WARMUP_OUT = 1;
+  
   wait = 0;
   while (wait <= 500) {
     wait++;
