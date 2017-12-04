@@ -1331,10 +1331,12 @@ void __attribute__((interrupt, shadow, no_auto_psv)) _INT1Interrupt(void) {
       
       
       global_data_A36487.trigger_complete = 1;
+      U2MODEbits.UARTEN = 0;
       uart2_next_byte = 0;
       uart2_input_buffer[0] = 0x1F;
       uart2_input_buffer[1] = 0x2F;
       uart2_input_buffer[2] = 0x3F;
+      U2MODEbits.UARTEN = 1;
       if (U2STAbits.OERR) {
 	U2STAbits.OERR = 0;
       }
