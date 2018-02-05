@@ -279,8 +279,11 @@ typedef struct{
 #define PR2_VALUE_10mS                 12500                        
 
 #define T3CON_VALUE                    (T3_ON & T3_IDLE_CON & T3_GATE_OFF & T3_PS_1_1 & T3_SOURCE_INT)
+
+#define TMR3_DELAY_1150US              11500
 #define TMR3_DELAY_2400US              24000                        
 #define TMR3_DELAY_200US                2000
+
 
 
 #define T3CON_VALUE_PS_1               (T3_ON & T3_IDLE_CON & T3_GATE_OFF & T3_PS_1_1   & T3_SOURCE_INT)
