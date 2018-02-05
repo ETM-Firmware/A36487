@@ -129,6 +129,9 @@ typedef struct{
   unsigned char uart_message_type;
   unsigned char uart_sequence_id;
 
+  unsigned int  limit_high_prf_timer;
+  unsigned char in_cooldown;
+  
 } TYPE_GLOBAL_DATA_A36487;
 
 

@@ -539,6 +539,51 @@ void DoA36487(void) {
     global_data_A36487.led_flash_counter++;
 
 
+#define HIGH_PRF_MAX_ON_TIME          6000 // 60 seconds
+#define MIN_PRF_FOR_DUTY_CYCLE_LIMIT  4150 // 415 HZ
+    
+    if (global_data_A36487.control_state == STATE_X_RAY_ENABLE) {
+      if (PIN_CUSTOMER_XRAY_ON_IN == ILL_CUSTOMER_XRAY_ON) {
+	//  The customer has requested X-rays, figure out if we are in cooldown or not
+	if (global_data_A36487.in_cooldown) {
+	  if (global_data_A36487.limit_high_prf_timer) {
+	    global_data_A36487.limit_high_prf_timer--;
+	  }
+	} else {
+	  if (log_data_rep_rate_deci_hertz >= MIN_PRF_FOR_DUTY_CYCLE_LIMIT) {
+	    global_data_A36487.limit_high_prf_timer++;
+	  }
+	}
+	
+	if (global_data_A36487.limit_high_prf_timer >= HIGH_PRF_MAX_ON_TIME) {
+	  global_data_A36487.in_cooldown = 1;
+	}
+
+	if (global_data_A36487.limit_high_prf_timer == 0) {
+	  global_data_A36487.in_cooldown = 0;
+	}
+
+
+	if (global_data_A36487.in_cooldown) {
+	  PIN_CPU_XRAY_ENABLE_OUT = !OLL_CPU_XRAY_ENABLE;
+	} else {
+	  PIN_CPU_XRAY_ENABLE_OUT = OLL_CPU_XRAY_ENABLE;
+	}
+
+	
+      } else {
+	// Xrays are off - decrement the timer
+	if (global_data_A36487.limit_high_prf_timer) {
+	  global_data_A36487.limit_high_prf_timer--;
+	}
+      }
+    } else {
+      // Xrays are off - decrement the timer
+      if (global_data_A36487.limit_high_prf_timer) {
+	global_data_A36487.limit_high_prf_timer--;
+      }
+    }
+    
     
     // -------------- UPDATE LED AND STATUS LINE OUTPUTS ---------------- //
     if (ETMCanSlaveGetSyncMsgPulseSyncWarmupLED()) {
