@@ -541,6 +541,7 @@ void DoA36487(void) {
 
 #define HIGH_PRF_MAX_ON_TIME          6000 // 60 seconds
 #define MIN_PRF_FOR_DUTY_CYCLE_LIMIT  4150 // 415 HZ
+#define PERIOD_425_HZ                 367  // 425HZ
     
     if (global_data_A36487.control_state == STATE_X_RAY_ENABLE) {
       if (PIN_CUSTOMER_XRAY_ON_IN == ILL_CUSTOMER_XRAY_ON) {
@@ -550,7 +551,7 @@ void DoA36487(void) {
 	    global_data_A36487.limit_high_prf_timer--;
 	  }
 	} else {
-	  if (log_data_rep_rate_deci_hertz >= MIN_PRF_FOR_DUTY_CYCLE_LIMIT) {
+	  if (global_data_A36487.last_period < PERIOD_425_HZ) {
 	    global_data_A36487.limit_high_prf_timer++;
 	  }
 	}
@@ -563,18 +564,16 @@ void DoA36487(void) {
 	  global_data_A36487.in_cooldown = 0;
 	}
 
-
-	if (global_data_A36487.in_cooldown) {
-	  PIN_CPU_XRAY_ENABLE_OUT = !OLL_CPU_XRAY_ENABLE;
-	} else {
-	  PIN_CPU_XRAY_ENABLE_OUT = OLL_CPU_XRAY_ENABLE;
-	}
-
-	
       } else {
 	// Xrays are off - decrement the timer
 	if (global_data_A36487.limit_high_prf_timer) {
 	  global_data_A36487.limit_high_prf_timer--;
+	}
+
+	if (global_data_A36487.limit_high_prf_timer) {
+	  global_data_A36487.in_cooldown = 1;
+	} else {
+	  global_data_A36487.in_cooldown = 0;
 	}
       }
     } else {
@@ -582,6 +581,13 @@ void DoA36487(void) {
       if (global_data_A36487.limit_high_prf_timer) {
 	global_data_A36487.limit_high_prf_timer--;
       }
+
+      if (global_data_A36487.limit_high_prf_timer) {
+	global_data_A36487.in_cooldown = 1;
+      } else {
+	global_data_A36487.in_cooldown = 0;
+      }
+      
     }
     
     
@@ -1348,7 +1354,9 @@ void __attribute__((interrupt, shadow, no_auto_psv)) _INT1Interrupt(void) {
     if (_T3IF) {
       // The minimum period between pulses has passed
       if ((global_data_A36487.control_state == STATE_X_RAY_ENABLE)) {
-	PIN_CPU_START_OUT = OLL_CPU_START;
+	if (global_data_A36487.in_cooldown == 0) {
+	  PIN_CPU_START_OUT = OLL_CPU_START;
+	}
 	// Start The Holdoff Timer for the next pulse
 	TMR3 = 0;
 	_T3IF = 0;
