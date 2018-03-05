@@ -129,6 +129,15 @@ typedef struct{
   unsigned char uart_message_type;
   unsigned char uart_sequence_id;
 
+
+  unsigned int  trigger_stayed_high_count;
+  unsigned int  trigger_not_valid_count;
+  unsigned int  trigger_period_too_short_count;
+  unsigned int  trigger_length_too_short_count;
+  unsigned int  trigger_decrement_counter;
+
+  unsigned char prf_from_concentrator;
+  
 } TYPE_GLOBAL_DATA_A36487;
 
 
@@ -157,6 +166,9 @@ typedef struct{
 #define _FAULT_KEYLOCK_OPEN                        _FAULT_6
 // _FAULT_7  DPARKER Some type of personality read error
 #define _FAULT_GUN_STATUS_FIBER                    _FAULT_8
+
+
+#define _FAULT_TRIGGER                             _FAULT_9
 
 
 #define _STATUS_CUSTOMER_HV_DISABLE                _WARNING_0

@@ -1,4 +1,5 @@
 #include "A36487.h"
+#include "A36487_CONFIG.h"
 
 /*
   DPARKER need to figure out and extend the ETM Can functions for high, low, cab scan mode so that all modules are more generic
@@ -443,6 +444,16 @@ void DoA36487(void) {
   unsigned long temp32;
 
   ETMCanSlaveDoCan();  // DPARKER disable this after we have finished testing code
+
+#ifndef __INTERNAL_TRIGGER
+  if (TMR1 > MAX_TRIGGER_HIGH_TIME_TMR1_UNITS) {
+    if (PIN_TRIGGER_IN == ILL_TRIGGER_ACTIVE) {
+      // DPARKER - the trigger has stayed high.  Need to start incrementing some counter and fault if it gets too high
+      global_data_A36487.trigger_stayed_high_count++;
+    }
+  }
+#endif
+  
   
 #ifdef __PLC_INTERFACE
   ClrWdt();  // The watchdog is normally cleared by the Can Module, but without that we need to manually clear it
@@ -539,6 +550,38 @@ void DoA36487(void) {
     global_data_A36487.led_flash_counter++;
 
 
+
+    // Look for trigger errors.
+#ifndef  __INTERNAL_TRIGGER
+
+    // Reset all the trigger errors if HV is off
+    if (_MACRO_NOT_HV_ENABLE) {
+      global_data_A36487.trigger_stayed_high_count = 0;
+      global_data_A36487.trigger_not_valid_count = 0;
+      global_data_A36487.trigger_period_too_short_count = 0;
+      global_data_A36487.trigger_length_too_short_count = 0;
+
+      _FAULT_TRIGGER = 0;
+    }
+    
+    if (global_data_A36487.trigger_stayed_high_count >= TRIGGER_STAYED_HIGH_FAULT_LEVEL) {
+      _FAULT_TRIGGER = 1;
+    }
+    
+    if (global_data_A36487.trigger_not_valid_count >= TRIGGER_NOT_VALID_FAULT_LEVEL) {
+       _FAULT_TRIGGER = 1;
+    }
+
+    if (global_data_A36487.trigger_period_too_short_count >= TRIGGER_PERIOD_TOO_SHORT_FAULT_LEVEL) {
+       _FAULT_TRIGGER = 1;
+    }
+
+    if (global_data_A36487.trigger_length_too_short_count >= TRIGGER_LENGTH_TOO_SHORT_FAULT_LEVEL) {
+      _FAULT_TRIGGER = 1;
+    }
+#endif
+
+    
     
     // -------------- UPDATE LED AND STATUS LINE OUTPUTS ---------------- //
     if (ETMCanSlaveGetSyncMsgPulseSyncWarmupLED()) {
@@ -784,6 +827,30 @@ void DoPostTriggerProcess(void) {
 			    *(unsigned int*)&data_grid_start,
 			    0);
   }
+
+#ifndef __INTERNAL_TRIGGER
+  global_data_A36487.trigger_decrement_counter++;
+  if (global_data_A36487.trigger_decrement_counter >= TRIGGER_COUNTER_DECREMENT_INTERVAL) {
+    global_data_A36487.trigger_decrement_counter = 0;
+    
+    if (global_data_A36487.trigger_stayed_high_count) {
+      global_data_A36487.trigger_stayed_high_count--;
+    }
+
+    if (global_data_A36487.trigger_not_valid_count) {
+      global_data_A36487.trigger_not_valid_count--;
+    }
+    
+    if (global_data_A36487.trigger_period_too_short_count) {
+      global_data_A36487.trigger_period_too_short_count--;
+    }
+    
+    if (global_data_A36487.trigger_length_too_short_count) {
+      global_data_A36487.trigger_length_too_short_count--;
+    }
+  }
+#endif
+
 }
 
 
@@ -1150,9 +1217,6 @@ int SendPersonalityToPLC(unsigned char id) {
   return ret;       //Communication Successful = 0
 }
 
-#define MIN_REQUESTED_PRF_DECIHERTZ 10
-#define MAX_REQUESTED_PRF_DECIHERTZ 5000
-
 void SetupT3PRFDeciHertz(unsigned int decihertz) {
 #ifdef __INTERNAL_TRIGGER
   unsigned long period_long;
@@ -1293,6 +1357,9 @@ void __attribute__((interrupt, shadow, no_auto_psv)) _INT1Interrupt(void) {
   unsigned int previous_level;
   unsigned int previous_width;
 
+  unsigned int period_min;
+  unsigned int period_max;
+  
   // A trigger was recieved
   
   // First check that the pulse is valid
@@ -1304,11 +1371,11 @@ void __attribute__((interrupt, shadow, no_auto_psv)) _INT1Interrupt(void) {
       // The minimum period between pulses has passed
       if ((global_data_A36487.control_state == STATE_X_RAY_ENABLE)) {
 	PIN_CPU_START_OUT = OLL_CPU_START;
-	// Start The Holdoff Timer for the next pulse
-	TMR3 = 0;
-	_T3IF = 0;
       }
-
+      // Start The Holdoff Timer for the next pulse
+      TMR3 = 0;
+      _T3IF = 0;
+      
       // Prepare for future pulses
       previous_level = global_data_A36487.this_pulse_level;
       previous_width = global_data_A36487.this_pulse_width;
@@ -1322,13 +1389,36 @@ void __attribute__((interrupt, shadow, no_auto_psv)) _INT1Interrupt(void) {
       // Calculate the Trigger PRF
       // TMR1 is used to time the time between INT1 interrupts
       global_data_A36487.last_period = TMR1;
+
       TMR1 = 0;
       if (_T1IF) {
 	// The timer exceed it's period of 400mS - (Will happen if the PRF is less than 2.5Hz)
 	global_data_A36487.last_period = 62501;  // This will indicate that the PRF is Less than 2.5Hz
       }
       _T1IF = 0;
+
+      period_max = global_data_A36487.prf_from_concentrator;
+      if (period_max > 2) {
+	period_max -= 2;
+      } else {
+	period_max = 0;
+      }
+      //period_max = prf_to_period_converstion_table[period_max];
+      // DPARKER add this table
       
+      
+      period_min = global_data_A36487.prf_from_concentrator;
+      period_min += 2;
+      if (period_min > 0xFF) {
+	period_min = 0xFF;
+      }
+      //period_min = prf_to_period_converstion_table[period_min];
+      
+      
+      if ((global_data_A36487.last_period > period_max) || (global_data_A36487.last_period < period_min)) {
+	
+      }
+
       
       global_data_A36487.trigger_complete = 1;
       U2MODEbits.UARTEN = 0;
@@ -1340,7 +1430,7 @@ void __attribute__((interrupt, shadow, no_auto_psv)) _INT1Interrupt(void) {
       if (U2STAbits.OERR) {
 	U2STAbits.OERR = 0;
       }
-
+      
       if (global_data_A36487.message_received == 0) {
 	global_data_A36487.bad_message_count++;
 	global_data_A36487.total_missed_messages++;
@@ -1350,20 +1440,31 @@ void __attribute__((interrupt, shadow, no_auto_psv)) _INT1Interrupt(void) {
 	}
       }
       global_data_A36487.message_received = 0;
-
-
+      
+      
       // DPARKER - REDUCE THIS DELAY TO ACCOUNT FOR THE TIME IT TAKES TO GET HERE
       __delay32(300);  // Delay 30 uS
       
       UpdateEnergyAndPolarityOutputs();
+
+      if (PIN_TRIGGER_IN == !ILL_TRIGGER_ACTIVE) {
+	// The trigger did not stay high for long enough)
+	global_data_A36487.trigger_length_too_short_count++;
+      }
+    } else {
+      // Triggers were too close together
+      global_data_A36487.trigger_period_too_short_count++;
     }
+  } else {
+    // Trigger pulse was too short to trigger a pulse.
+    global_data_A36487.trigger_not_valid_count++;
   }
   PIN_CPU_START_OUT = !OLL_CPU_START;
 #endif
   _INT1IF = 0;
 }
+
   
-unsigned int trigger_test_count;  
 
 void __attribute__((interrupt(__save__(CORCON,SR)), no_auto_psv)) _U2RXInterrupt(void) {
 #ifndef __INTERNAL_TRIGGER
@@ -1396,7 +1497,9 @@ void __attribute__((interrupt(__save__(CORCON,SR)), no_auto_psv)) _U2RXInterrupt
       trigger_width = uart2_input_buffer[1];
       trigger_width_filtered = uart2_input_buffer[1];
       global_data_A36487.this_pulse_width = trigger_width_filtered;
+      global_data_A36487.prf_from_concentrator = uart2_input_buffer[3];
 
+      
       global_data_A36487.trigger_width_update_ready = 1;
       global_data_A36487.message_received = 1;
       global_data_A36487.message_received_count++;
