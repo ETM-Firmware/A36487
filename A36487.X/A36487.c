@@ -448,8 +448,16 @@ void DoA36487(void) {
 #ifndef __INTERNAL_TRIGGER
   if (TMR1 > MAX_TRIGGER_HIGH_TIME_TMR1_UNITS) {
     if (PIN_TRIGGER_IN == ILL_TRIGGER_ACTIVE) {
-      // DPARKER - the trigger has stayed high.  Need to start incrementing some counter and fault if it gets too high
-      global_data_A36487.trigger_stayed_high_count++;
+      __delay32(20);
+      if (global_data_A36487.trigger_complete != 1) {
+	if (PIN_TRIGGER_IN == ILL_TRIGGER_ACTIVE) {
+	  __delay32(20);
+	  if (PIN_TRIGGER_IN == ILL_TRIGGER_ACTIVE) {
+	    // DPARKER - the trigger has stayed high.  Need to start incrementing some counter and fault if it gets too high
+	    global_data_A36487.trigger_stayed_high_count++;
+	  }
+	}
+      }
     }
   }
 #endif
@@ -471,11 +479,18 @@ void DoA36487(void) {
   }
   
   // ---------- UPDATE LOCAL FAULTS ------------------- //
-  
+
+
+#ifdef __PLC_INTERFACE
+  if ((global_data_A36487.control_state == STATE_FAULT) && (_MACRO_NOT_HV_ENABLE)) {
+    _FAULT_REGISTER = 0;
+  }
+#else
   if ((global_data_A36487.control_state == STATE_FAULT) && ETMCanSlaveGetSyncMsgResetEnable()) {
     _FAULT_REGISTER = 0;
   }
-
+#endif
+  
   ETMDigitalUpdateInput(&global_data_A36487.pfn_fan_fault, PIN_CPU_PFN_OK_IN);
   if (ETMDigitalFilteredOutput(&global_data_A36487.pfn_fan_fault) == ILL_PIN_PFN_FAULT) {
     _FAULT_PFN_STATUS = 1;
@@ -569,7 +584,7 @@ void DoA36487(void) {
     }
     
     if (global_data_A36487.trigger_not_valid_count >= TRIGGER_NOT_VALID_FAULT_LEVEL) {
-       _FAULT_TRIGGER = 1;
+      //_FAULT_TRIGGER = 1;
     }
 
     if (global_data_A36487.trigger_period_too_short_count >= TRIGGER_PERIOD_TOO_SHORT_FAULT_LEVEL) {
@@ -579,6 +594,7 @@ void DoA36487(void) {
     if (global_data_A36487.trigger_length_too_short_count >= TRIGGER_LENGTH_TOO_SHORT_FAULT_LEVEL) {
       _FAULT_TRIGGER = 1;
     }
+
 #endif
 
     
@@ -628,6 +644,14 @@ void DoA36487(void) {
     ETMCanSlaveSetDebugRegister(0x0, global_data_A36487.control_state);
     ETMCanSlaveSetDebugRegister(0x1, trigger_set_point_active_decihertz);
 
+    ETMCanSlaveSetDebugRegister(0x2, global_data_A36487.trigger_stayed_high_count);
+    ETMCanSlaveSetDebugRegister(0x3, global_data_A36487.trigger_not_valid_count);
+    ETMCanSlaveSetDebugRegister(0x4, global_data_A36487.trigger_period_too_short_count);
+    ETMCanSlaveSetDebugRegister(0x5, global_data_A36487.trigger_length_too_short_count);
+    ETMCanSlaveSetDebugRegister(0x6, global_data_A36487.trigger_decrement_counter);
+    
+
+    
     ETMCanSlaveSetDebugRegister(0x7, grid_stop_high3);
     ETMCanSlaveSetDebugRegister(0x8, grid_start_high3);
     ETMCanSlaveSetDebugRegister(0x9, grid_stop_low3);
