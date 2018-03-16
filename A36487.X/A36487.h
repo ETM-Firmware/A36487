@@ -372,7 +372,7 @@ typedef struct{
 #define OLL_AFC_TRIGGER_ENABLE              1
 #define OLL_ENERGY_LEVEL_HIGH               1
 #define OLL_POLARITY_NORMAL                 0
-#define OLL_GUN_CAB_SCAN_SELECTED           1
+#define OLL_GUN_CAB_SCAN_SELECTED           0
 #define OLL_GANTRY_MODE                     1
 
 #define PIN_CPU_GUNDRIVER_OK_IN           _RA6
