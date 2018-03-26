@@ -597,6 +597,26 @@ void DoA36487(void) {
 
 #endif
 
+    if (PIN_PACKAGE_ID_1 == ILL_RETURN_TRIGGER_FAULT) {
+      ETMCanSlaveSetDebugRegister(0xB, 1);
+      if (_FAULT_TRIGGER == 1) {
+	PIN_PORTAL_GANTRY_MODE_OUT = OLL_TRIGGER_FAULT;  // Trigger Fault Active
+	ETMCanSlaveSetDebugRegister(0xC, 0);
+      } else {
+	PIN_PORTAL_GANTRY_MODE_OUT = !OLL_TRIGGER_FAULT; // Trigger fault not active
+	ETMCanSlaveSetDebugRegister(0xC, 1);
+      }
+    } else {
+      ETMCanSlaveSetDebugRegister(0xB, 0);
+      if (global_data_A36487.this_pulse_width >= 191) {
+	PIN_PORTAL_GANTRY_MODE_OUT = OLL_GANTRY_MODE;
+	ETMCanSlaveSetDebugRegister(0xC, 100);
+      } else {
+	PIN_PORTAL_GANTRY_MODE_OUT = !OLL_GANTRY_MODE;
+	ETMCanSlaveSetDebugRegister(0xC, 101);
+      }
+    }
+
     
     
     // -------------- UPDATE LED AND STATUS LINE OUTPUTS ---------------- //
@@ -1082,11 +1102,6 @@ void UpdateEnergyAndPolarityOutputs(void) {
       PIN_ENERGY_CPU_OUT = OLL_ENERGY_LEVEL_HIGH;
       PIN_HVPS_POLARITY_OUT = OLL_POLARITY_NORMAL;
       PIN_AFC_TRIGGER_ENABLE_OUT = OLL_AFC_TRIGGER_ENABLE;
-      if (global_data_A36487.this_pulse_width >= 191) {
-	PIN_PORTAL_GANTRY_MODE_OUT = OLL_GANTRY_MODE;
-      } else {
-	PIN_PORTAL_GANTRY_MODE_OUT = !OLL_GANTRY_MODE;
-      }
       break;
       
     case PULSE_LEVEL_CARGO_LOW:
@@ -1097,11 +1112,6 @@ void UpdateEnergyAndPolarityOutputs(void) {
       if (global_data_A36487.this_pulse_level != global_data_A36487.next_pulse_level) {
 	PIN_AFC_TRIGGER_ENABLE_OUT = !OLL_AFC_TRIGGER_ENABLE;
       }
-      if (global_data_A36487.this_pulse_width >= 191) {
-	PIN_PORTAL_GANTRY_MODE_OUT = OLL_GANTRY_MODE;
-      } else {
-	PIN_PORTAL_GANTRY_MODE_OUT = !OLL_GANTRY_MODE;
-      }
       break;
       
     case PULSE_LEVEL_CAB_HIGH:
@@ -1109,7 +1119,6 @@ void UpdateEnergyAndPolarityOutputs(void) {
       PIN_ENERGY_CPU_OUT = OLL_ENERGY_LEVEL_HIGH;
       PIN_HVPS_POLARITY_OUT = OLL_POLARITY_NORMAL;
       PIN_AFC_TRIGGER_ENABLE_OUT = OLL_AFC_TRIGGER_ENABLE;
-      PIN_PORTAL_GANTRY_MODE_OUT = !OLL_GANTRY_MODE;
       break;
       
     case PULSE_LEVEL_CAB_LOW:
@@ -1120,7 +1129,6 @@ void UpdateEnergyAndPolarityOutputs(void) {
       if (global_data_A36487.this_pulse_level != global_data_A36487.next_pulse_level) {
 	PIN_AFC_TRIGGER_ENABLE_OUT = !OLL_AFC_TRIGGER_ENABLE;
       }
-      PIN_PORTAL_GANTRY_MODE_OUT = !OLL_GANTRY_MODE;
       break;
       
     case PULSE_LEVEL_OFF:

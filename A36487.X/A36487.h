@@ -333,6 +333,7 @@ typedef struct{
    C13 - PIN_CPU_XRAY_ENABLE_IN
    D8  - PIN_CPU_HV_ENABLE_IN
    D14 - PIN_XRAY_CMD_MISMATCH_IN
+   F3  - PIN_PACKAGE_ID_1
    F6  - PIN_PACKAGE_VALID_IN
    F7  - PIN_KEY_LOCK_IN
    F8  - PIN_PANEL_IN
@@ -384,6 +385,7 @@ typedef struct{
 #define PIN_CPU_XRAY_ENABLE_IN            _RC13
 #define PIN_CPU_HV_ENABLE_IN              _RD8
 #define PIN_XRAY_CMD_MISMATCH_IN          _RD14
+#define PIN_PACKAGE_ID_1                  _RF3
 #define PIN_PACKAGE_VALID_IN              _RF6
 #define PIN_KEY_LOCK_IN                   _RF7   // Only looked at by CAN code
 #define PIN_PANEL_IN                      _RF8   // Only looked at by CAN code
@@ -392,6 +394,7 @@ typedef struct{
 #define PIN_CUSTOMER_XRAY_ON_IN           _RG3
 
 
+#define ILL_RETURN_TRIGGER_FAULT          1
 
 #define ILL_CUSTOMER_BEAM_ENABLE          1
 #define ILL_CUSTOMER_XRAY_ON              1
@@ -420,6 +423,7 @@ typedef struct{
 #define PIN_CPU_HV_ENABLE_OUT               _LATD8
 #define PIN_CPU_WARMUP_OUT                  _LATD10
 
+#define OLL_TRIGGER_FAULT                   0
 #define OLL_CPU_READY                       0
 #define OLL_CPU_STANDBY                     0
 #define OLL_CPU_XRAY_ENABLE                 1
