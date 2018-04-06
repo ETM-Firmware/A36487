@@ -596,7 +596,7 @@ void DoA36487(void) {
     }
 
     if (global_data_A36487.bad_message_count > 8) {
-      _FAULT_TRIGGER = 1;
+      //_FAULT_TRIGGER = 1;
     }
     
 #endif
@@ -1473,13 +1473,19 @@ void __attribute__((interrupt, shadow, no_auto_psv)) _INT1Interrupt(void) {
 	global_data_A36487.previous_message_ok = 0;
       } else {
 	if (global_data_A36487.previous_message_ok == 1) {
-	  if (global_data_A36487.bad_message_count) {
-	    global_data_A36487.bad_message_count--;
-	  }
+	  global_data_A36487.bad_message_count = 0;
 	}
 	global_data_A36487.previous_message_ok = 1;
       }
       global_data_A36487.message_received = 0;
+
+      if (global_data_A36487.bad_message_count >= 8) {
+	global_data_A36487.this_pulse_level = DOSE_COMMAND_HIGH_ENERGY;
+	global_data_A36487.this_pulse_width = 0;
+	
+	global_data_A36487.next_pulse_level = DOSE_COMMAND_HIGH_ENERGY;
+	global_data_A36487.next_pulse_width = 0;
+      }
       
       
       // DPARKER - REDUCE THIS DELAY TO ACCOUNT FOR THE TIME IT TAKES TO GET HERE
