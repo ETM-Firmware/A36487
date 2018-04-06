@@ -575,7 +575,7 @@ void DoA36487(void) {
       global_data_A36487.trigger_not_valid_count = 0;
       global_data_A36487.trigger_period_too_short_count = 0;
       global_data_A36487.trigger_length_too_short_count = 0;
-
+      global_data_A36487.bad_message_count = 0;
       _FAULT_TRIGGER = 0;
     }
     
@@ -595,6 +595,10 @@ void DoA36487(void) {
       _FAULT_TRIGGER = 1;
     }
 
+    if (global_data_A36487.bad_message_count > 8) {
+      _FAULT_TRIGGER = 1;
+    }
+    
 #endif
 
     if (PIN_PACKAGE_ID_1 == ILL_RETURN_TRIGGER_FAULT) {
@@ -1466,10 +1470,14 @@ void __attribute__((interrupt, shadow, no_auto_psv)) _INT1Interrupt(void) {
       if (global_data_A36487.message_received == 0) {
 	global_data_A36487.bad_message_count++;
 	global_data_A36487.total_missed_messages++;
+	global_data_A36487.previous_message_ok = 0;
       } else {
-	if (global_data_A36487.bad_message_count) {
-	  global_data_A36487.bad_message_count--;
+	if (global_data_A36487.previous_message_ok == 1) {
+	  if (global_data_A36487.bad_message_count) {
+	    global_data_A36487.bad_message_count--;
+	  }
 	}
+	global_data_A36487.previous_message_ok = 1;
       }
       global_data_A36487.message_received = 0;
       

@@ -122,7 +122,8 @@ typedef struct{
   unsigned int bad_message_count;
   unsigned int total_missed_messages;
   unsigned int message_received_count;
-
+  unsigned int previous_message_ok;
+  
 
   unsigned int trigger_width_update_ready;
 
