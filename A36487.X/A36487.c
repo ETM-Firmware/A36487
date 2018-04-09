@@ -676,11 +676,10 @@ void DoA36487(void) {
     
 
     
-    ETMCanSlaveSetDebugRegister(0x7, grid_stop_high3);
-    ETMCanSlaveSetDebugRegister(0x8, grid_start_high3);
-    ETMCanSlaveSetDebugRegister(0x9, grid_stop_low3);
-    ETMCanSlaveSetDebugRegister(0xA, grid_start_low3);
-
+    ETMCanSlaveSetDebugRegister(0x7, global_data_A36487.bad_message_count);
+    ETMCanSlaveSetDebugRegister(0x8, global_data_A36487.total_missed_messages);
+    ETMCanSlaveSetDebugRegister(0x9, global_data_A36487.previous_message_ok);
+    ETMCanSlaveSetDebugRegister(0xA, global_data_A36487.message_received_count);
   }
 }
 
@@ -1471,6 +1470,9 @@ void __attribute__((interrupt, shadow, no_auto_psv)) _INT1Interrupt(void) {
 	global_data_A36487.bad_message_count++;
 	global_data_A36487.total_missed_messages++;
 	global_data_A36487.previous_message_ok = 0;
+	if (global_data_A36487.bad_message_count >= 0xFF00) {
+	  global_data_A36487.bad_message_count = 0xFF00;
+	}
       } else {
 	if (global_data_A36487.previous_message_ok == 1) {
 	  global_data_A36487.bad_message_count = 0;
@@ -1479,7 +1481,7 @@ void __attribute__((interrupt, shadow, no_auto_psv)) _INT1Interrupt(void) {
       }
       global_data_A36487.message_received = 0;
 
-      if (global_data_A36487.bad_message_count >= 8) {
+      if (global_data_A36487.bad_message_count >= TRIGGER_MAX_BAD_MESSAGE_COUNT) {
 	global_data_A36487.this_pulse_level = DOSE_COMMAND_HIGH_ENERGY;
 	global_data_A36487.this_pulse_width = 0;
 	
@@ -1545,8 +1547,9 @@ void __attribute__((interrupt(__save__(CORCON,SR)), no_auto_psv)) _U2RXInterrupt
       global_data_A36487.this_pulse_width = trigger_width_filtered;
       global_data_A36487.prf_from_concentrator = uart2_input_buffer[3];
 
-      
-      global_data_A36487.trigger_width_update_ready = 1;
+      if (global_data_A36487.bad_message_count <= TRIGGER_MAX_BAD_MESSAGE_COUNT) {
+	global_data_A36487.trigger_width_update_ready = 1;	
+      }
       global_data_A36487.message_received = 1;
       global_data_A36487.message_received_count++;
     }
