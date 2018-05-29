@@ -138,6 +138,9 @@ typedef struct{
   unsigned int  trigger_decrement_counter;
 
   unsigned char prf_from_concentrator;
+
+  unsigned int  limit_high_prf_timer;
+  unsigned char in_cooldown;
   
 } TYPE_GLOBAL_DATA_A36487;
 
@@ -292,6 +295,7 @@ typedef struct{
 #define PR2_VALUE_10mS                 12500                        
 
 #define T3CON_VALUE                    (T3_ON & T3_IDLE_CON & T3_GATE_OFF & T3_PS_1_1 & T3_SOURCE_INT)
+#define TMR3_DELAY_1150US              11500
 #define TMR3_DELAY_2400US              24000                        
 #define TMR3_DELAY_200US                2000
 

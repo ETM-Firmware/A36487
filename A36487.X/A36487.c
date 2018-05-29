@@ -258,7 +258,7 @@ void InitializeA36487(void) {
 
   // Setupt Timer 3 to measure the Pulse Holdoff time to prevent over PRF  
   T3CON = T3CON_VALUE;
-  PR3 = TMR3_DELAY_2400US;
+  PR3 = TMR3_DELAY_1150US;
   TMR3 = 0;
   _T3IF = 0;
   
@@ -588,7 +588,7 @@ void DoA36487(void) {
     }
 
     if (global_data_A36487.trigger_period_too_short_count >= TRIGGER_PERIOD_TOO_SHORT_FAULT_LEVEL) {
-       _FAULT_TRIGGER = 1;
+      //_FAULT_TRIGGER = 1;
     }
 
     if (global_data_A36487.trigger_length_too_short_count >= TRIGGER_LENGTH_TOO_SHORT_FAULT_LEVEL) {
@@ -621,6 +621,56 @@ void DoA36487(void) {
       }
     }
 
+#define HIGH_PRF_MAX_ON_TIME          6000 // 60 seconds
+#define MIN_PRF_FOR_DUTY_CYCLE_LIMIT  4150 // 415 HZ
+#define PERIOD_425_HZ                 367  // 425HZ
+    
+    if (global_data_A36487.control_state == STATE_X_RAY_ENABLE) {
+      if (PIN_CUSTOMER_XRAY_ON_IN == ILL_CUSTOMER_XRAY_ON) {
+	//  The customer has requested X-rays, figure out if we are in cooldown or not
+	if (global_data_A36487.in_cooldown) {
+	  if (global_data_A36487.limit_high_prf_timer) {
+	    global_data_A36487.limit_high_prf_timer--;
+	  }
+	} else {
+	  if (global_data_A36487.last_period < PERIOD_425_HZ) {
+	    global_data_A36487.limit_high_prf_timer++;
+	  }
+	}
+	
+	if (global_data_A36487.limit_high_prf_timer >= HIGH_PRF_MAX_ON_TIME) {
+	  global_data_A36487.in_cooldown = 1;
+	}
+
+	if (global_data_A36487.limit_high_prf_timer == 0) {
+	  global_data_A36487.in_cooldown = 0;
+	}
+
+      } else {
+	// Xrays are off - decrement the timer
+	if (global_data_A36487.limit_high_prf_timer) {
+	  global_data_A36487.limit_high_prf_timer--;
+	}
+
+	if (global_data_A36487.limit_high_prf_timer) {
+	  global_data_A36487.in_cooldown = 1;
+	} else {
+	  global_data_A36487.in_cooldown = 0;
+	}
+      }
+    } else {
+      // Xrays are off - decrement the timer
+      if (global_data_A36487.limit_high_prf_timer) {
+	global_data_A36487.limit_high_prf_timer--;
+      }
+
+      if (global_data_A36487.limit_high_prf_timer) {
+	global_data_A36487.in_cooldown = 1;
+      } else {
+	global_data_A36487.in_cooldown = 0;
+      }
+      
+    }
     
     
     // -------------- UPDATE LED AND STATUS LINE OUTPUTS ---------------- //
@@ -1405,7 +1455,12 @@ void __attribute__((interrupt, shadow, no_auto_psv)) _INT1Interrupt(void) {
     if (_T3IF) {
       // The minimum period between pulses has passed
       if ((global_data_A36487.control_state == STATE_X_RAY_ENABLE)) {
-	PIN_CPU_START_OUT = OLL_CPU_START;
+	if (global_data_A36487.in_cooldown == 0) {
+	  PIN_CPU_START_OUT = OLL_CPU_START;
+	}
+	// Start The Holdoff Timer for the next pulse
+	TMR3 = 0;
+	_T3IF = 0;
       }
       // Start The Holdoff Timer for the next pulse
       TMR3 = 0;
