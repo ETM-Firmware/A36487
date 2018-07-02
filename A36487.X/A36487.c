@@ -592,7 +592,7 @@ void DoA36487(void) {
     }
 
     if (global_data_A36487.trigger_length_too_short_count >= TRIGGER_LENGTH_TOO_SHORT_FAULT_LEVEL) {
-      _FAULT_TRIGGER = 1;
+      //_FAULT_TRIGGER = 1;
     }
 
     if (global_data_A36487.bad_message_count > 8) {
@@ -1018,11 +1018,11 @@ void ProgramShiftRegistersDelays(void) {
   Nop();
 }
 
-#define CAB_SCAN_GRID_START_HIGH   130
-#define CAB_SCAN_GRID_STOP_HIGH    135
+#define CAB_SCAN_GRID_START_HIGH   200
+#define CAB_SCAN_GRID_STOP_HIGH    230
 
-#define CAB_SCAN_GRID_START_LOW    130
-#define CAB_SCAN_GRID_STOP_LOW     135
+#define CAB_SCAN_GRID_START_LOW    200
+#define CAB_SCAN_GRID_STOP_LOW     230
 
 void ProgramShiftRegistersGrid(unsigned char dose_command) {
   unsigned int data;
@@ -1087,7 +1087,7 @@ unsigned int GetThisPulseLevel(void) {
     if (global_data_A36487.this_pulse_level == DOSE_COMMAND_HIGH_ENERGY) {
       return PULSE_LEVEL_CAB_HIGH;
     } else {
-      return PULSE_LEVEL_CAB_LOW;
+      return PULSE_LEVEL_CAB_HIGH;
     }
   }
 
@@ -1467,14 +1467,6 @@ void __attribute__((interrupt, shadow, no_auto_psv)) _INT1Interrupt(void) {
       _T3IF = 0;
       
       // Prepare for future pulses
-      previous_level = global_data_A36487.this_pulse_level;
-      previous_width = global_data_A36487.this_pulse_width;
-      
-      global_data_A36487.this_pulse_level = global_data_A36487.next_pulse_level;
-      global_data_A36487.this_pulse_width = global_data_A36487.next_pulse_width;
-      
-      global_data_A36487.next_pulse_level = previous_level;
-      global_data_A36487.next_pulse_width = previous_width;
       
       // Calculate the Trigger PRF
       // TMR1 is used to time the time between INT1 interrupts
@@ -1521,35 +1513,16 @@ void __attribute__((interrupt, shadow, no_auto_psv)) _INT1Interrupt(void) {
 	U2STAbits.OERR = 0;
       }
 
-
-      
-      if (global_data_A36487.message_received == 0) {
-	global_data_A36487.bad_message_count++;
-	global_data_A36487.bad_message_count = 0; // DPARKER added for L3
-	global_data_A36487.total_missed_messages++;
-	global_data_A36487.previous_message_ok = 0;
-	if (global_data_A36487.bad_message_count >= 0xFF00) {
-	  global_data_A36487.bad_message_count = 0xFF00;
-	}
-      } else {
-	if (global_data_A36487.previous_message_ok == 1) {
-	  global_data_A36487.bad_message_count = 0;
-	}
-	global_data_A36487.previous_message_ok = 1;
-      }
-      global_data_A36487.message_received = 0;
-
-      if (global_data_A36487.bad_message_count >= TRIGGER_MAX_BAD_MESSAGE_COUNT) {
-	global_data_A36487.this_pulse_level = DOSE_COMMAND_HIGH_ENERGY;
-	global_data_A36487.this_pulse_width = 0;
-	
-	global_data_A36487.next_pulse_level = DOSE_COMMAND_HIGH_ENERGY;
-	global_data_A36487.next_pulse_width = 0;
-      }
-      
-      
       // DPARKER - REDUCE THIS DELAY TO ACCOUNT FOR THE TIME IT TAKES TO GET HERE
       __delay32(300);  // Delay 30 uS
+      if (global_data_A36487.this_pulse_level == DOSE_COMMAND_HIGH_ENERGY) {
+	global_data_A36487.this_pulse_level = DOSE_COMMAND_LOW_ENERGY;
+      } else {
+	global_data_A36487.this_pulse_level = DOSE_COMMAND_HIGH_ENERGY;
+      }
+
+      global_data_A36487.this_pulse_width = 0xFF;
+      
       
       UpdateEnergyAndPolarityOutputs();
 
@@ -1574,48 +1547,6 @@ void __attribute__((interrupt, shadow, no_auto_psv)) _INT1Interrupt(void) {
 
 void __attribute__((interrupt(__save__(CORCON,SR)), no_auto_psv)) _U2RXInterrupt(void) {
 #ifndef __INTERNAL_TRIGGER
-  unsigned int crc_check;
-  unsigned char data;
-  while (U2STAbits.URXDA) {
-    data = U2RXREG;
-    uart2_input_buffer[uart2_next_byte] = data;
-    uart2_next_byte++;
-    uart2_next_byte &= 0x000F;
-  }
-  
-  if (uart2_next_byte >= 6) {
-    PIN_40US_TEST_POINT = 1;
-    crc_check   = uart2_input_buffer[5];
-    crc_check <<= 8;
-    crc_check  += uart2_input_buffer[4];
-    if (ETMCRCModbus(&uart2_input_buffer[0],4) == crc_check) {
-      if (uart2_input_buffer[2] & 0x01) {
-	global_data_A36487.next_pulse_level = DOSE_COMMAND_LOW_ENERGY;
-	PIN_40US_TEST_POINT = 0;
-      } else {
-	global_data_A36487.next_pulse_level = DOSE_COMMAND_HIGH_ENERGY;
-	PIN_40US_TEST_POINT = 1;
-      }
-      
-      global_data_A36487.uart_message_type = (uart2_input_buffer[0] >> 4);
-      global_data_A36487.uart_sequence_id  = (uart2_input_buffer[0] & 0x0F);
-      
-      trigger_width = uart2_input_buffer[1];
-      trigger_width_filtered = uart2_input_buffer[1];
-      global_data_A36487.this_pulse_width = trigger_width_filtered;
-      global_data_A36487.prf_from_concentrator = uart2_input_buffer[3];
-
-      if (global_data_A36487.bad_message_count <= TRIGGER_MAX_BAD_MESSAGE_COUNT) {
-	global_data_A36487.trigger_width_update_ready = 1;	
-      }
-      global_data_A36487.message_received = 1;
-      global_data_A36487.message_received_count++;
-    }
-    uart2_next_byte = 0;
-    uart2_input_buffer[0] = 0x1F;
-    uart2_input_buffer[1] = 0x2F;
-    uart2_input_buffer[2] = 0x3F;
-  }
 #endif
   _U2RXIF = 0;
 }
