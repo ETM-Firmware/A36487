@@ -1520,9 +1520,12 @@ void __attribute__((interrupt, shadow, no_auto_psv)) _INT1Interrupt(void) {
       if (U2STAbits.OERR) {
 	U2STAbits.OERR = 0;
       }
+
+
       
       if (global_data_A36487.message_received == 0) {
 	global_data_A36487.bad_message_count++;
+	global_data_A36487.bad_message_count = 0; // DPARKER added for L3
 	global_data_A36487.total_missed_messages++;
 	global_data_A36487.previous_message_ok = 0;
 	if (global_data_A36487.bad_message_count >= 0xFF00) {
