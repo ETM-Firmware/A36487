@@ -1041,8 +1041,8 @@ void ProgramShiftRegistersGrid(unsigned char dose_command) {
       break;
       
     case PULSE_LEVEL_CAB_HIGH:
-      data_grid_start = CAB_SCAN_GRID_START_HIGH;
-      data_grid_stop  = CAB_SCAN_GRID_STOP_HIGH;
+      data_grid_stop  = InterpolateValue(grid_stop_high0, grid_stop_high1, grid_stop_high2, grid_stop_high3, 0x00);
+      data_grid_start = InterpolateValue(grid_start_high0, grid_start_high1, grid_start_high2, grid_start_high3, 0x00);
       break;
       
     case PULSE_LEVEL_CAB_LOW:
@@ -1083,18 +1083,20 @@ unsigned int GetThisPulseLevel(void) {
   }
 
   // CAB SCAN Mode
-  if ((PIN_LOW_MODE_IN == ILL_MODE_BIT_SELECTED) && (PIN_HIGH_MODE_IN == !ILL_MODE_BIT_SELECTED)) {
-    if (global_data_A36487.this_pulse_level == DOSE_COMMAND_HIGH_ENERGY) {
-      return PULSE_LEVEL_CAB_HIGH;
-    } else {
-      return PULSE_LEVEL_CAB_HIGH;
-    }
+  if ((PIN_LOW_MODE_IN != ILL_MODE_BIT_SELECTED) && (PIN_HIGH_MODE_IN == !ILL_MODE_BIT_SELECTED)) {
+    return PULSE_LEVEL_CAB_HIGH;
   }
 
 
   // HIGH MODE ONLY  
   if ((PIN_LOW_MODE_IN == !ILL_MODE_BIT_SELECTED) && (PIN_HIGH_MODE_IN == ILL_MODE_BIT_SELECTED)) {
     return PULSE_LEVEL_CARGO_HIGH;
+  }
+
+
+  // LOW MODE ONLY  
+  if ((PIN_LOW_MODE_IN == ILL_MODE_BIT_SELECTED) && (PIN_HIGH_MODE_IN == !ILL_MODE_BIT_SELECTED)) {
+    return PULSE_LEVEL_CARGO_LOW;
   }
   
 
@@ -1162,7 +1164,7 @@ void UpdateEnergyAndPolarityOutputs(void) {
       PIN_ENERGY_CPU_OUT = !OLL_ENERGY_LEVEL_HIGH;      
       PIN_HVPS_POLARITY_OUT = OLL_POLARITY_NORMAL;
       PIN_AFC_TRIGGER_ENABLE_OUT = OLL_AFC_TRIGGER_ENABLE;
-      if (global_data_A36487.this_pulse_level != global_data_A36487.next_pulse_level) {
+      if (PIN_HIGH_MODE_IN == ILL_MODE_BIT_SELECTED) {
 	PIN_AFC_TRIGGER_ENABLE_OUT = !OLL_AFC_TRIGGER_ENABLE;
       }
       break;
