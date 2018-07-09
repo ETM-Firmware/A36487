@@ -639,7 +639,8 @@ void DoA36487(void) {
 	}
 	
 	if (global_data_A36487.limit_high_prf_timer >= HIGH_PRF_MAX_ON_TIME) {
-	  global_data_A36487.in_cooldown = 1;
+	  //global_data_A36487.in_cooldown = 1;
+	  global_data_A36487.in_cooldown = 0;
 	}
 
 	if (global_data_A36487.limit_high_prf_timer == 0) {
