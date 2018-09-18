@@ -397,6 +397,9 @@ typedef struct{
 #define PIN_CPU_PFN_OK_IN                 _RG0
 #define PIN_CUSTOMER_BEAM_ENABLE_IN       _RG2
 #define PIN_CUSTOMER_XRAY_ON_IN           _RG3
+#define PIN_RS_485_RECEIVE                _RF4
+#define PIN_ENERGY_SELECT                 PIN_RS_485_RECEIVE
+
 
 
 #define ILL_RETURN_TRIGGER_FAULT          1
@@ -410,7 +413,7 @@ typedef struct{
 #define ILL_PIN_PFN_FAULT                 0
 #define ILL_PIN_GUN_FAULT                 0
 #define ILL_XRAY_CMD_MISMATCH             1
-
+#define ILL_LOW_ENERGY                    0
 
 
 #define ILL_PLC_ENABLE_HV                 1

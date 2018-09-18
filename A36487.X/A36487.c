@@ -313,11 +313,13 @@ void InitializeA36487(void) {
   // Configure UART2 for communicating with Serial Dose Command
   U2BRG = A36487_U2_BRG_VALUE;
   U2STA = A36487_U2_STA_VALUE;
-  U2MODE = A36487_U2_MODE_VALUE;
+  //U2MODE = A36487_U2_MODE_VALUE;
+  U2MODE = 0x0000; // DPARKER disable UART
   uart2_next_byte = 0;  
   _U2RXIF = 0;
   _U2RXIP = 6;
-  _U2RXIE = 1;  
+  //_U2RXIE = 1;
+  _U2RXIE = 0;  // DPARKER disbale UART
 #endif
 
 
@@ -1510,19 +1512,19 @@ void __attribute__((interrupt, shadow, no_auto_psv)) _INT1Interrupt(void) {
       uart2_input_buffer[0] = 0x1F;
       uart2_input_buffer[1] = 0x2F;
       uart2_input_buffer[2] = 0x3F;
-      U2MODEbits.UARTEN = 1;
+      U2MODEbits.UARTEN = 0;  // DPARKER DISABLE UART
       if (U2STAbits.OERR) {
 	U2STAbits.OERR = 0;
       }
 
       // DPARKER - REDUCE THIS DELAY TO ACCOUNT FOR THE TIME IT TAKES TO GET HERE
       __delay32(300);  // Delay 30 uS
-      if (global_data_A36487.this_pulse_level == DOSE_COMMAND_HIGH_ENERGY) {
+      if (PIN_RS_485_RECEIVE == ILL_LOW_ENERGY) {
 	global_data_A36487.this_pulse_level = DOSE_COMMAND_LOW_ENERGY;
       } else {
 	global_data_A36487.this_pulse_level = DOSE_COMMAND_HIGH_ENERGY;
       }
-
+      
       global_data_A36487.this_pulse_width = 0xFF;
       
       
@@ -1530,7 +1532,7 @@ void __attribute__((interrupt, shadow, no_auto_psv)) _INT1Interrupt(void) {
 
       if (PIN_TRIGGER_IN == !ILL_TRIGGER_ACTIVE) {
 	// The trigger did not stay high for long enough)
-	global_data_A36487.trigger_length_too_short_count++;
+	//global_data_A36487.trigger_length_too_short_count++;
       }
     } else {
       // Triggers were too close together
