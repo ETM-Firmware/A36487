@@ -258,7 +258,7 @@ void InitializeA36487(void) {
 
   // Setupt Timer 3 to measure the Pulse Holdoff time to prevent over PRF  
   T3CON = T3CON_VALUE;
-  PR3 = TMR3_DELAY_2400US;
+  PR3 = TMR3_DELAY_1200US;
   TMR3 = 0;
   _T3IF = 0;
   
@@ -569,6 +569,8 @@ void DoA36487(void) {
     // Look for trigger errors.
 #ifndef  __INTERNAL_TRIGGER
 
+        
+#ifdef __PLC_INTERFACE
     // Reset all the trigger errors if HV is off
     if (_MACRO_NOT_HV_ENABLE) {
       global_data_A36487.trigger_stayed_high_count = 0;
@@ -578,6 +580,7 @@ void DoA36487(void) {
       global_data_A36487.bad_message_count = 0;
       _FAULT_TRIGGER = 0;
     }
+
     
     if (global_data_A36487.trigger_stayed_high_count >= TRIGGER_STAYED_HIGH_FAULT_LEVEL) {
       _FAULT_TRIGGER = 1;
@@ -598,6 +601,51 @@ void DoA36487(void) {
     if (global_data_A36487.bad_message_count > 8) {
       //_FAULT_TRIGGER = 1;
     }
+
+#else
+    if (_MACRO_NOT_HV_ENABLE) {
+      global_data_A36487.trigger_stayed_high_count = 0;
+      global_data_A36487.trigger_not_valid_count = 0;
+      global_data_A36487.trigger_period_too_short_count = 0;
+      global_data_A36487.trigger_length_too_short_count = 0;
+      global_data_A36487.bad_message_count = 0;
+    }
+
+    if (ETMCanSlaveGetSyncMsgResetEnable()) {
+      global_data_A36487.trigger_stayed_high_count = 0;
+      global_data_A36487.trigger_not_valid_count = 0;
+      global_data_A36487.trigger_period_too_short_count = 0;
+      global_data_A36487.trigger_length_too_short_count = 0;
+      global_data_A36487.bad_message_count = 0;
+      _FAULT_TRIGGER = 0;
+    }
+    
+    // Check for trigger faults on the 2.5
+    // These faults are only checked if these mode bits are high
+    if ((PIN_LOW_MODE_IN == ILL_MODE_BIT_SELECTED) && (PIN_HIGH_MODE_IN == ILL_MODE_BIT_SELECTED)) {
+      
+      if (global_data_A36487.trigger_stayed_high_count >= TRIGGER_STAYED_HIGH_FAULT_LEVEL) {
+	_FAULT_TRIGGER = 1;
+      }
+      
+      if (global_data_A36487.trigger_not_valid_count >= TRIGGER_NOT_VALID_FAULT_LEVEL) {
+	//_FAULT_TRIGGER = 1;
+      }
+      
+      if (global_data_A36487.trigger_period_too_short_count >= TRIGGER_PERIOD_TOO_SHORT_FAULT_LEVEL) {
+	_FAULT_TRIGGER = 1;
+      }
+      
+      if (global_data_A36487.trigger_length_too_short_count >= TRIGGER_LENGTH_TOO_SHORT_FAULT_LEVEL) {
+	_FAULT_TRIGGER = 1;
+      }
+      
+      if (global_data_A36487.bad_message_count > 8) {
+	_FAULT_TRIGGER = 1;
+      }
+    }
+#endif //__PLC_INTERFACE
+
     
 #endif
 
@@ -1005,6 +1053,20 @@ void ProgramShiftRegistersGrid(unsigned char dose_command) {
       data_grid_stop  = 0;
       break;
 
+
+    case DOSE_COMMAND_HIGH_ENERGY:
+      data_grid_stop  = InterpolateValue(grid_stop_high0, grid_stop_high1, grid_stop_high2, grid_stop_high3, dose_command);
+      data_grid_start = InterpolateValue(grid_start_high0, grid_start_high1, grid_start_high2, grid_start_high3, dose_command);
+      break;
+
+    case DOSE_COMMAND_LOW_ENERGY:
+      //data_grid_start = CAB_SCAN_GRID_START_HIGH;
+      //data_grid_stop  = CAB_SCAN_GRID_STOP_HIGH;
+      data_grid_stop  = InterpolateValue(grid_stop_low0, grid_stop_low1, grid_stop_low2, grid_stop_low3, dose_command);
+      data_grid_start = InterpolateValue(grid_start_low0, grid_start_low1, grid_start_low2, grid_start_low3, dose_command);
+      break;
+
+      
     default:
       break;
     }
@@ -1054,12 +1116,20 @@ unsigned int GetThisPulseLevel(void) {
 #else
   
   // DPARKER THIS NEEDS MORE WORK I THINK FOR ALL OF THE NON-PLC Based systems
-  
-  if (PIN_HIGH_MODE_IN == ILL_MODE_BIT_SELECTED) {
-    return PULSE_LEVEL_CARGO_HIGH;
+  if ((PIN_LOW_MODE_IN == ILL_MODE_BIT_SELECTED) && (PIN_HIGH_MODE_IN == ILL_MODE_BIT_SELECTED)) {
+    return global_data_A36487.this_pulse_level;
   }
   
-  return PULSE_LEVEL_CARGO_LOW;
+  if ((PIN_LOW_MODE_IN == ILL_MODE_BIT_SELECTED) && (PIN_HIGH_MODE_IN == !ILL_MODE_BIT_SELECTED)) {
+    return DOSE_COMMAND_LOW_ENERGY;
+  }
+
+  if ((PIN_LOW_MODE_IN == !ILL_MODE_BIT_SELECTED) && (PIN_HIGH_MODE_IN == ILL_MODE_BIT_SELECTED)) {
+    return DOSE_COMMAND_HIGH_ENERGY;
+  }
+
+  return PULSE_LEVEL_OFF;
+  
 #endif
   
 }
@@ -1098,6 +1168,7 @@ unsigned char InterpolateValue(unsigned int val_0, unsigned int val_1, unsigned 
 
 
 void UpdateEnergyAndPolarityOutputs(void) {
+#ifdef __PLC_INTERFACE
   switch (GetThisPulseLevel())
     {
     case PULSE_LEVEL_CARGO_HIGH:
@@ -1141,7 +1212,9 @@ void UpdateEnergyAndPolarityOutputs(void) {
     default:
       break;
     }
-
+  
+#endif
+  
   // DPARKER - Should this move somewhere else???
   // Adjust trigger frequency for self trigger mode
   if (trigger_set_point_active_decihertz != trigger_set_high_energy_decihertz) {
@@ -1405,12 +1478,14 @@ void __attribute__((interrupt, shadow, no_auto_psv)) _INT1Interrupt(void) {
     if (_T3IF) {
       // The minimum period between pulses has passed
       if ((global_data_A36487.control_state == STATE_X_RAY_ENABLE)) {
-	PIN_CPU_START_OUT = OLL_CPU_START;
+	if ((PIN_LOW_MODE_IN == ILL_MODE_BIT_SELECTED) || (PIN_HIGH_MODE_IN == ILL_MODE_BIT_SELECTED)) {
+	  PIN_CPU_START_OUT = OLL_CPU_START;
+	}
       }
       // Start The Holdoff Timer for the next pulse
       TMR3 = 0;
       _T3IF = 0;
-      
+
       // Prepare for future pulses
       previous_level = global_data_A36487.this_pulse_level;
       previous_width = global_data_A36487.this_pulse_width;
@@ -1465,7 +1540,8 @@ void __attribute__((interrupt, shadow, no_auto_psv)) _INT1Interrupt(void) {
       if (U2STAbits.OERR) {
 	U2STAbits.OERR = 0;
       }
-      
+
+#ifdef __PLC_INTERFACE
       if (global_data_A36487.message_received == 0) {
 	global_data_A36487.bad_message_count++;
 	global_data_A36487.total_missed_messages++;
@@ -1488,6 +1564,19 @@ void __attribute__((interrupt, shadow, no_auto_psv)) _INT1Interrupt(void) {
 	global_data_A36487.next_pulse_level = DOSE_COMMAND_HIGH_ENERGY;
 	global_data_A36487.next_pulse_width = 0;
       }
+
+#else
+      if (global_data_A36487.message_received == 0) {
+	// A serial dose message was not recieved, set the pulse width to max
+	global_data_A36487.bad_message_count++;
+	global_data_A36487.total_missed_messages++;
+	global_data_A36487.this_pulse_width = 0xFF;
+      } else {
+	global_data_A36487.bad_message_count = 0;
+      }
+      global_data_A36487.message_received = 0;
+      
+#endif
       
       
       // DPARKER - REDUCE THIS DELAY TO ACCOUNT FOR THE TIME IT TAKES TO GET HERE
