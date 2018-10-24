@@ -987,6 +987,21 @@ void ProgramShiftRegistersDelays(void) {
       afc_sample_delay = afc_delay_low;
       break;
 
+    case DOSE_COMMAND_HIGH_ENERGY:
+      hv_trigger_delay = dose_sample_delay_high;
+      pfn_trigger_delay = pfn_delay_high;
+      magnetron_sample_delay = magnetron_current_sample_delay_high;
+      afc_sample_delay = afc_delay_high;
+      break;
+
+    case DOSE_COMMAND_LOW_ENERGY:
+      hv_trigger_delay = dose_sample_delay_low;
+      pfn_trigger_delay = pfn_delay_low;
+      magnetron_sample_delay = magnetron_current_sample_delay_low;
+      afc_sample_delay = afc_delay_low;
+      break;
+
+      
     case PULSE_LEVEL_OFF:
       // DPARKER - Disable Pulsing
       break;
