@@ -219,7 +219,7 @@ typedef struct{
 #define magnetron_current_sample_delay_low    *(unsigned char*)&slave_board_data.log_data[14]
 #define afc_delay_low             (*((unsigned char*)&slave_board_data.log_data[14] + 1))
 
-#define log_data_rep_rate_deci_hertz        slave_board_data.log_data[15]
+#define log_data_rep_rate_deci_hertz        slave_board_data.log_data[3]
 
 #define trigger_width             (*((unsigned char*)&slave_board_data.log_data[7] + 0))
 #define trigger_width_filtered    (*((unsigned char*)&slave_board_data.log_data[7] + 1))
