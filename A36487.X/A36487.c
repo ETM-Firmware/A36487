@@ -5,6 +5,11 @@
   DPARKER need to figure out and extend the ETM Can functions for high, low, cab scan mode so that all modules are more generic
 */
 
+#define ETM_CAN_REGISTER_PULSE_SYNC_SET_1_MAGNETX_DOSE_0      0x3210
+#define ETM_CAN_REGISTER_PULSE_SYNC_SET_1_MAGNETX_DOSE_1      0x3211
+#define ETM_CAN_REGISTER_PULSE_SYNC_SET_1_MAGNETX_DOSE_ALL    0x3212
+
+
 #define DOSE_COMMAND_LOW_ENERGY   0  
 #define DOSE_COMMAND_HIGH_ENERGY  1
 
@@ -157,11 +162,16 @@ void DoStateMachine(void) {
     _CONTROL_NOT_CONFIGURED = 0;
     _CONTROL_NOT_READY = 0;
     PIN_CPU_HV_ENABLE_OUT = OLL_CPU_HV_ENABLE;
-    PIN_CPU_XRAY_ENABLE_OUT = OLL_CPU_XRAY_ENABLE;
     PIN_CPU_WARNING_LAMP_OUT = !OLL_CPU_WARNING_LAMP;
     while (global_data_A36487.control_state == STATE_X_RAY_ENABLE) {
       DoA36487();
 
+      if (PIN_HIGH_MODE_IN == PIN_LOW_MODE_IN) {
+	PIN_CPU_XRAY_ENABLE_OUT = !OLL_CPU_XRAY_ENABLE;
+      } else {
+	PIN_CPU_XRAY_ENABLE_OUT = OLL_CPU_XRAY_ENABLE;
+      }
+      
       if (PIN_CUSTOMER_XRAY_ON_IN == ILL_CUSTOMER_XRAY_ON) {
 	PIN_CPU_WARNING_LAMP_OUT = OLL_CPU_WARNING_LAMP;
       } else {
@@ -1308,7 +1318,7 @@ void ETMCanSlaveExecuteCMDBoardSpecific(ETMCanMessage* message_ptr) {
       /*
 	Place all board specific commands here
       */
-            
+      /*            
     case ETM_CAN_REGISTER_PULSE_SYNC_SET_1_HIGH_ENERGY_TIMING_REG_0:
       *(unsigned int*)&grid_start_high3 = message_ptr->word2;
       *(unsigned int*)&grid_start_high1 = message_ptr->word1;
@@ -1336,13 +1346,60 @@ void ETMCanSlaveExecuteCMDBoardSpecific(ETMCanMessage* message_ptr) {
       *(unsigned int*)&magnetron_current_sample_delay_low = message_ptr->word0;
       global_data_A36487.counter_config_received |= 0b1000;
       break;
-      
+
     case ETM_CAN_REGISTER_PULSE_SYNC_SET_1_CUSTOMER_LED_OUTPUT:
       //global_data_A36487.led_state = message_ptr->word0;
       trigger_set_high_energy_decihertz = message_ptr->word2;
       trigger_set_low_energy_decihertz = message_ptr->word1;
       break;
       
+      */
+
+      
+    case ETM_CAN_REGISTER_PULSE_SYNC_SET_1_MAGNETX_DOSE_0:
+      grid_stop_high3  = (message_ptr->word1 & 0x00FF);
+      grid_stop_high2  = (message_ptr->word1 & 0x00FF);
+      grid_stop_high1  = (message_ptr->word1 & 0x00FF);
+      grid_stop_high0  = (message_ptr->word1 & 0x00FF);
+
+      grid_start_high3 = (message_ptr->word0 & 0x00FF);
+      grid_start_high2 = (message_ptr->word0 & 0x00FF);
+      grid_start_high1 = (message_ptr->word0 & 0x00FF);
+      grid_start_high0 = (message_ptr->word0 & 0x00FF);
+
+      afc_delay_high   = (message_ptr->word2 & 0x00FF);
+
+      global_data_A36487.counter_config_received |= 0b0001;
+      break;
+
+    case ETM_CAN_REGISTER_PULSE_SYNC_SET_1_MAGNETX_DOSE_1:
+      grid_stop_low3  = (message_ptr->word1 & 0x00FF);
+      grid_stop_low2  = (message_ptr->word1 & 0x00FF);
+      grid_stop_low1  = (message_ptr->word1 & 0x00FF);
+      grid_stop_low0  = (message_ptr->word1 & 0x00FF);
+
+      grid_start_low3 = (message_ptr->word0 & 0x00FF);
+      grid_start_low2 = (message_ptr->word0 & 0x00FF);
+      grid_start_low1 = (message_ptr->word0 & 0x00FF);
+      grid_start_low0 = (message_ptr->word0 & 0x00FF);
+
+      afc_delay_low   = (message_ptr->word2 & 0x00FF);
+
+      global_data_A36487.counter_config_received |= 0b0010;
+      break;
+      
+    case ETM_CAN_REGISTER_PULSE_SYNC_SET_1_MAGNETX_DOSE_ALL:
+      dose_sample_delay_high              = (message_ptr->word2 & 0x00FF);
+      pfn_delay_high                      = (message_ptr->word1 & 0x00FF);
+      magnetron_current_sample_delay_high = (message_ptr->word0 & 0x00FF);
+
+      dose_sample_delay_low               = (message_ptr->word2 & 0x00FF);
+      pfn_delay_low                       = (message_ptr->word1 & 0x00FF);
+      magnetron_current_sample_delay_low  = (message_ptr->word0 & 0x00FF);
+      
+      global_data_A36487.counter_config_received |= 0b1100;
+      break;
+
     default:
       ETMCanSlaveIncrementInvalidIndex();
       break;
