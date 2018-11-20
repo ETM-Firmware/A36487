@@ -34,10 +34,7 @@
   
  */
 
-//#define __PLC_INTERFACE  // IF NOT, Implies Can interface 
 //#define __TRIGGER_AFC_HIGH_ONLY
-
-//#define __INTERNAL_TRIGGER // - Does not Have Serial Dose
 
 
 #define DELAY_PLC   2500000  // 2.5 million cycles
@@ -438,17 +435,6 @@ typedef struct{
 
 
 
-#ifdef __PLC_INTERFACE
-
-#define A36487_TRISA_VALUE 0b0111111111111111
-#define A36487_TRISB_VALUE 0b1111111111111111
-#define A36487_TRISC_VALUE 0b1011111111110011
-#define A36487_TRISD_VALUE 0b0100010101100001
-#define A36487_TRISF_VALUE 0b1111111111111011
-#define A36487_TRISG_VALUE 0b0101111111111101
-
-#else
-
 #define A36487_TRISA_VALUE 0b1111111111111111
 #define A36487_TRISB_VALUE 0b1111111111001111
 #define A36487_TRISC_VALUE 0b1001111111110011
@@ -456,43 +442,17 @@ typedef struct{
 #define A36487_TRISF_VALUE 0b1111111111111011
 #define A36487_TRISG_VALUE 0b0101111111111111
 
-#endif
 
 
 
 
 
-#ifdef __PLC_INTERFACE
-
-#define _MACRO_HV_ENABLE         (PIN_CPU_HV_ENABLE_IN == ILL_PLC_ENABLE_HV)
-#define _MACRO_NOT_HV_ENABLE     (PIN_CPU_HV_ENABLE_IN == !ILL_PLC_ENABLE_HV)
-
-#define _MACRO_XRAY_ENABLE       ((PIN_CPU_XRAY_ENABLE_IN == ILL_PLC_READY) && ((PIN_LOW_MODE_IN == ILL_MODE_BIT_SELECTED) || (PIN_HIGH_MODE_IN == ILL_MODE_BIT_SELECTED)))
-#define _MACRO_NOT_XRAY_ENABLE   ((PIN_CPU_XRAY_ENABLE_IN == !ILL_PLC_READY) || ((PIN_LOW_MODE_IN == !ILL_MODE_BIT_SELECTED) && (PIN_HIGH_MODE_IN == !ILL_MODE_BIT_SELECTED)))
-
-#else
 // We are working with a 6/4 system
 #define _MACRO_HV_ENABLE         (ETMCanSlaveGetSyncMsgPulseSyncDisableHV() == 0)
 #define _MACRO_NOT_HV_ENABLE     (ETMCanSlaveGetSyncMsgPulseSyncDisableHV())
-
-#ifdef  __INTERNAL_TRIGGER
-#define _MACRO_XRAY_ENABLE       ((ETMCanSlaveGetSyncMsgPulseSyncDisableXray() == 0) && (PIN_LOW_MODE_IN != PIN_HIGH_MODE_IN))
-#define _MACRO_NOT_XRAY_ENABLE   (ETMCanSlaveGetSyncMsgPulseSyncDisableXray() || (PIN_LOW_MODE_IN == PIN_HIGH_MODE_IN))
-
-#else
 #define _MACRO_XRAY_ENABLE       (ETMCanSlaveGetSyncMsgPulseSyncDisableXray() == 0)
 #define _MACRO_NOT_XRAY_ENABLE   (ETMCanSlaveGetSyncMsgPulseSyncDisableXray())
-
-#endif // #ifdef  __INTERNAL_TRIGGER
  
-
-
-#endif // #else #ifdef __PLC_INTERFACE
-
-
-
-
-
 
 
 // Customer Interface
@@ -545,17 +505,6 @@ typedef struct{
 #define LOW_DOSE                0xAA
 #define ULTRA_LOW_DOSE          0x99
 
-
-
-
-#ifdef __PLC_INTERFACE
-// FORce Reset to be active
-#define ETMCanSlaveGetSyncMsgResetEnable() (1)
-
-// Force can com faults to be ignored
-#define ETMCanSlaveGetComFaultStatus() (0)
-
-#endif  
 
 
 
