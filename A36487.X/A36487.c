@@ -16,6 +16,7 @@
 #define PULSE_LEVEL_OFF           6
 
 
+unsigned int test_pulse_count;
 
 
 // DPARKER - Move these to the CAN Module - All boards need to know if the energy is commanded high or low
@@ -855,6 +856,12 @@ void DoStartupLEDs(void) {
 
 
 void DoPostTriggerProcess(void) {
+
+  test_pulse_count++;
+  if (test_pulse_count >= 4) {
+    test_pulse_count = 0;
+  }
+  
   ETMCanSlavePulseSyncSendNextPulseLevel(GetThisPulseLevel(), global_data_A36487.pulses_on, log_data_rep_rate_deci_hertz);
   
   ProgramShiftRegistersDelays();  // Load the shift registers
@@ -968,11 +975,11 @@ void ProgramShiftRegistersDelays(void) {
   Nop();
 }
 
-#define CAB_SCAN_GRID_START_HIGH   130
-#define CAB_SCAN_GRID_STOP_HIGH    135
+#define CAB_SCAN_GRID_START_HIGH   0
+#define CAB_SCAN_GRID_STOP_HIGH    1
 
-#define CAB_SCAN_GRID_START_LOW    130
-#define CAB_SCAN_GRID_STOP_LOW     135
+#define CAB_SCAN_GRID_START_LOW    0
+#define CAB_SCAN_GRID_STOP_LOW     1
 
 void ProgramShiftRegistersGrid(unsigned char dose_command) {
   unsigned int data;
@@ -1148,6 +1155,14 @@ void UpdateEnergyAndPolarityOutputs(void) {
     trigger_set_point_active_decihertz = trigger_set_high_energy_decihertz;
     SetupT3PRFDeciHertz(trigger_set_point_active_decihertz);
   }
+
+  // SAMPLE HIGH AND LOW ENERGY AFC OTHER SET OF PULSES
+  if (test_pulse_count <= 1) {
+    PIN_AFC_TRIGGER_ENABLE_OUT = OLL_AFC_TRIGGER_ENABLE;
+  } else {
+    PIN_AFC_TRIGGER_ENABLE_OUT = !OLL_AFC_TRIGGER_ENABLE;
+  }
+
 }
 
 
