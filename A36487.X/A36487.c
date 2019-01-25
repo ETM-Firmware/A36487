@@ -1,6 +1,9 @@
 #include "A36487.h"
 #include "A36487_CONFIG.h"
 
+
+unsigned int test_pulse_count;
+
 /*
   DPARKER need to figure out and extend the ETM Can functions for high, low, cab scan mode so that all modules are more generic
 */
@@ -855,6 +858,12 @@ void DoStartupLEDs(void) {
 
 
 void DoPostTriggerProcess(void) {
+
+  test_pulse_count++;
+  if (test_pulse_count >=4) {
+    test_pulse_count = 0;
+  }
+  
   ETMCanSlavePulseSyncSendNextPulseLevel(GetThisPulseLevel(), global_data_A36487.pulses_on, log_data_rep_rate_deci_hertz);
   
   ProgramShiftRegistersDelays();  // Load the shift registers
@@ -1112,9 +1121,13 @@ void UpdateEnergyAndPolarityOutputs(void) {
       PIN_ENERGY_CPU_OUT = !OLL_ENERGY_LEVEL_HIGH;      
       PIN_HVPS_POLARITY_OUT = OLL_POLARITY_NORMAL;
       PIN_AFC_TRIGGER_ENABLE_OUT = OLL_AFC_TRIGGER_ENABLE;
-      if (global_data_A36487.this_pulse_level != global_data_A36487.next_pulse_level) {
+      if (test_pulse_count <= 1) {
+	PIN_AFC_TRIGGER_ENABLE_OUT = OLL_AFC_TRIGGER_ENABLE;
+      } else {
 	PIN_AFC_TRIGGER_ENABLE_OUT = !OLL_AFC_TRIGGER_ENABLE;
       }
+	
+
       break;
       
     case PULSE_LEVEL_CAB_HIGH:
