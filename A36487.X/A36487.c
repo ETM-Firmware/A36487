@@ -1,6 +1,14 @@
 #include "A36487.h"
 #include "A36487_CONFIG.h"
 
+
+#define PIN_GUN_HV_ON       PIN_HVPS_POLARITY_OUT
+#define PIN_GUN_BEAM_ENABLE PIN_RF_POLARITY_OUT
+
+#define OLL_ENABLE_GUN_HV   0
+#define OLL_ENABLE_GUN_BEAM 0
+
+
 /*
   DPARKER need to figure out and extend the ETM Can functions for high, low, cab scan mode so that all modules are more generic
 */
@@ -87,6 +95,8 @@ void DoStateMachine(void) {
     PIN_CPU_HV_ENABLE_OUT = !OLL_CPU_HV_ENABLE;
     PIN_CPU_XRAY_ENABLE_OUT = !OLL_CPU_XRAY_ENABLE;
     PIN_CPU_WARNING_LAMP_OUT = !OLL_CPU_WARNING_LAMP;
+    PIN_GUN_HV_ON = !OLL_ENABLE_GUN_HV;
+    PIN_GUN_BEAM_ENABLE = !OLL_ENABLE_GUN_BEAM;
     global_data_A36487.control_state = STATE_WAIT_FOR_CONFIG;
     break;
 
@@ -96,6 +106,8 @@ void DoStateMachine(void) {
     PIN_CPU_HV_ENABLE_OUT = !OLL_CPU_HV_ENABLE;
     PIN_CPU_XRAY_ENABLE_OUT = !OLL_CPU_XRAY_ENABLE;
     PIN_CPU_WARNING_LAMP_OUT = !OLL_CPU_WARNING_LAMP;
+    PIN_GUN_HV_ON = !OLL_ENABLE_GUN_HV;
+    PIN_GUN_BEAM_ENABLE = !OLL_ENABLE_GUN_BEAM;
     global_data_A36487.counter_config_received = 0;
     while (global_data_A36487.control_state == STATE_WAIT_FOR_CONFIG) {
       DoA36487();
@@ -117,6 +129,8 @@ void DoStateMachine(void) {
     PIN_CPU_HV_ENABLE_OUT = !OLL_CPU_HV_ENABLE;
     PIN_CPU_XRAY_ENABLE_OUT = !OLL_CPU_XRAY_ENABLE;
     PIN_CPU_WARNING_LAMP_OUT = !OLL_CPU_WARNING_LAMP;
+    PIN_GUN_HV_ON = !OLL_ENABLE_GUN_HV;
+    PIN_GUN_BEAM_ENABLE = !OLL_ENABLE_GUN_BEAM;
     while (global_data_A36487.control_state == STATE_HV_OFF) {
       DoA36487();
       
@@ -137,9 +151,17 @@ void DoStateMachine(void) {
     PIN_CPU_HV_ENABLE_OUT = OLL_CPU_HV_ENABLE;
     PIN_CPU_XRAY_ENABLE_OUT = !OLL_CPU_XRAY_ENABLE;
     PIN_CPU_WARNING_LAMP_OUT = !OLL_CPU_WARNING_LAMP;
+    PIN_GUN_HV_ON = !OLL_ENABLE_GUN_HV;
+    PIN_GUN_BEAM_ENABLE = !OLL_ENABLE_GUN_BEAM;
     while (global_data_A36487.control_state == STATE_HV_ENABLE) {
       DoA36487();
 
+      if (PIN_CUSTOMER_BEAM_ENABLE_IN == ILL_CUSTOMER_BEAM_ENABLE) {
+	PIN_GUN_HV_ON = OLL_ENABLE_GUN_HV;
+      } else {
+	PIN_GUN_HV_ON = !OLL_ENABLE_GUN_HV;
+      }
+      
       if ((_MACRO_XRAY_ENABLE) && (PIN_CUSTOMER_BEAM_ENABLE_IN == ILL_CUSTOMER_BEAM_ENABLE)) {
 	global_data_A36487.control_state = STATE_X_RAY_ENABLE;
       }
@@ -160,6 +182,8 @@ void DoStateMachine(void) {
     _CONTROL_NOT_READY = 0;
     PIN_CPU_HV_ENABLE_OUT = OLL_CPU_HV_ENABLE;
     PIN_CPU_WARNING_LAMP_OUT = !OLL_CPU_WARNING_LAMP;
+    PIN_GUN_HV_ON = OLL_ENABLE_GUN_HV;
+    PIN_GUN_BEAM_ENABLE = !OLL_ENABLE_GUN_BEAM;
     while (global_data_A36487.control_state == STATE_X_RAY_ENABLE) {
       DoA36487();
 
@@ -167,12 +191,15 @@ void DoStateMachine(void) {
 	PIN_CPU_XRAY_ENABLE_OUT = !OLL_CPU_XRAY_ENABLE;
       } else {
 	PIN_CPU_XRAY_ENABLE_OUT = OLL_CPU_XRAY_ENABLE;
+	
       }
       
       if (PIN_CUSTOMER_XRAY_ON_IN == ILL_CUSTOMER_XRAY_ON) {
 	PIN_CPU_WARNING_LAMP_OUT = OLL_CPU_WARNING_LAMP;
+	PIN_GUN_BEAM_ENABLE = OLL_ENABLE_GUN_BEAM;
       } else {
 	PIN_CPU_WARNING_LAMP_OUT = !OLL_CPU_WARNING_LAMP;
+	PIN_GUN_BEAM_ENABLE = !OLL_ENABLE_GUN_BEAM;
       }
       
       if ((_MACRO_NOT_XRAY_ENABLE) || (_MACRO_NOT_HV_ENABLE) || (PIN_CUSTOMER_BEAM_ENABLE_IN == !ILL_CUSTOMER_BEAM_ENABLE)) {
@@ -192,6 +219,8 @@ void DoStateMachine(void) {
     PIN_CPU_HV_ENABLE_OUT = !OLL_CPU_HV_ENABLE;
     PIN_CPU_XRAY_ENABLE_OUT = !OLL_CPU_XRAY_ENABLE;
     PIN_CPU_WARNING_LAMP_OUT = !OLL_CPU_WARNING_LAMP;
+    PIN_GUN_HV_ON = !OLL_ENABLE_GUN_HV;
+    PIN_GUN_BEAM_ENABLE = !OLL_ENABLE_GUN_BEAM;
     while (global_data_A36487.control_state == STATE_FAULT) {
       DoA36487();
       
@@ -208,6 +237,8 @@ void DoStateMachine(void) {
     PIN_CPU_HV_ENABLE_OUT = !OLL_CPU_HV_ENABLE;
     PIN_CPU_XRAY_ENABLE_OUT = !OLL_CPU_XRAY_ENABLE;
     PIN_CPU_WARNING_LAMP_OUT = !OLL_CPU_WARNING_LAMP;
+    PIN_GUN_HV_ON = !OLL_ENABLE_GUN_HV;
+    PIN_GUN_BEAM_ENABLE = !OLL_ENABLE_GUN_BEAM;
     global_data_A36487.control_state = STATE_UNKNOWN;
     while (1) {
       DoA36487();
@@ -244,7 +275,7 @@ void InitializeA36487(void) {
   PIN_ENERGY_CPU_OUT = OLL_ENERGY_LEVEL_HIGH;
   
   //PIN_GUN_CAB_SCAN_FIBER_OUT = OLL_GUN_CAB_SCAN_SELECTED;
-  //PIN_AFC_TRIGGER_ENABLE_OUT = OLL_AFC_TRIGGER_ENABLE;
+  PIN_AFC_TRIGGER_ENABLE_OUT = OLL_AFC_TRIGGER_ENABLE;
   //PIN_ANALOG_READ_COMPLETE_OUT = OLL_ANALOG_READ_COMPLETE;
 
   // Initialize all I/O Registers
@@ -574,6 +605,9 @@ void DoStartupLEDs(void) {
 
 
 void DoPostTriggerProcess(void) {
+  unsigned long temp32;
+  unsigned int temp16;
+  
   ETMCanSlavePulseSyncSendNextPulseLevel(GetThisPulseLevel(), global_data_A36487.pulses_on, log_data_rep_rate_deci_hertz);
   
   ProgramShiftRegistersDelays();  // Load the shift registers
@@ -587,11 +621,18 @@ void DoPostTriggerProcess(void) {
   
   if (ETMCanSlaveGetSyncMsgHighSpeedLogging()) {
     // Log Pulse by Pulse data
+
+    temp32 = 1562500;
+    temp32 /= global_data_A36487.last_period;
+    temp16 = temp32;
+    ETMCanSlaveSetDebugRegister(0xB, global_data_A36487.last_period);
+    ETMCanSlaveSetDebugRegister(0xC, temp16);
+
     ETMCanSlaveLogPulseData(ETM_CAN_DATA_LOG_REGISTER_PULSE_SYNC_FAST_LOG_0,
 			    (global_data_A36487.pulses_on - 1),
 			    *(unsigned int*)&trigger_width,
 			    *(unsigned int*)&data_grid_start,
-			    0);
+			    temp16);
   }
 
   global_data_A36487.trigger_decrement_counter++;
