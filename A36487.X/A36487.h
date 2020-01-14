@@ -138,7 +138,9 @@ typedef struct{
   unsigned int  trigger_decrement_counter;
 
   unsigned char prf_from_concentrator;
-  
+
+
+  unsigned int x_ray_not_pulsing;
 } TYPE_GLOBAL_DATA_A36487;
 
 

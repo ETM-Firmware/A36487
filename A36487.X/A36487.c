@@ -166,6 +166,7 @@ void DoStateMachine(void) {
 	PIN_CPU_WARNING_LAMP_OUT = OLL_CPU_WARNING_LAMP;
       } else {
 	PIN_CPU_WARNING_LAMP_OUT = !OLL_CPU_WARNING_LAMP;
+	global_data_A36487.x_ray_not_pulsing = 1;
       }
       
       if ((_MACRO_NOT_XRAY_ENABLE) || (_MACRO_NOT_HV_ENABLE) || (PIN_CUSTOMER_BEAM_ENABLE_IN == !ILL_CUSTOMER_BEAM_ENABLE)) {
@@ -1394,6 +1395,7 @@ void __attribute__((interrupt, shadow, no_auto_psv)) _INT1Interrupt(void) {
 
   unsigned int period_min;
   unsigned int period_max;
+  unsigned int pulse_this_trigger;
   
   // A trigger was recieved
   
@@ -1405,7 +1407,23 @@ void __attribute__((interrupt, shadow, no_auto_psv)) _INT1Interrupt(void) {
     if (_T3IF) {
       // The minimum period between pulses has passed
       if ((global_data_A36487.control_state == STATE_X_RAY_ENABLE)) {
-	PIN_CPU_START_OUT = OLL_CPU_START;
+
+	pulse_this_trigger = 1;
+	if (PIN_CUSTOMER_XRAY_ON_IN != ILL_CUSTOMER_XRAY_ON) {
+	  global_data_A36487.x_ray_not_pulsing = 1;
+	  pulse_this_trigger = 0;
+	} else if (global_data_A36487.x_ray_not_pulsing == 1) {
+	  global_data_A36487.x_ray_not_pulsing = 0;
+	  // This is true the first pulse that after turning x_ray_on AND ONLY ON THIS FIRST PULSE
+	  if (global_data_A36487.this_pulse_level == DOSE_COMMAND_LOW_ENERGY) {
+	    // Do not trigger this pulse
+	    pulse_this_trigger = 0;
+	  }
+	}
+	if (pulse_this_trigger) {
+	  PIN_CPU_START_OUT = OLL_CPU_START;
+	}
+	
       }
       // Start The Holdoff Timer for the next pulse
       TMR3 = 0;
