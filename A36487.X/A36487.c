@@ -34,7 +34,6 @@ unsigned int  uart2_next_byte;
 
 void DoStateMachine(void);
 void InitializeA36487(void);
-unsigned char ReadDosePersonality(void);
 void DoA36487(void);
 void DoStartupLEDs(void);
 void DoPostTriggerProcess(void);
@@ -47,7 +46,6 @@ unsigned char InterpolateValue(unsigned int val_0, unsigned int val_1, unsigned 
 void SetupT3PRFDeciHertz(unsigned int decihertz);
 void UpdateAnalogDataFromPLC(void);
 void ReadAnalogRegister(void);
-int SendPersonalityToPLC(unsigned char id);
 
 
 
@@ -322,7 +320,7 @@ void InitializeA36487(void) {
 
 
   // Read the personality module
-  global_data_A36487.personality = ReadDosePersonality();
+  global_data_A36487.personality = HIGH_DOSE; 
   
 #ifndef __PLC_INTERFACE
   global_data_A36487.personality = 0;
@@ -373,70 +371,9 @@ void InitializeA36487(void) {
   
 
 
-#ifdef __PLC_INTERFACE
-  unsigned int personality_sent_results;
-  unsigned int personality_send_attempts;
-  
-  personality_sent_results = 1;
-  personality_send_attempts = 0;
-  while ((personality_sent_results) && (personality_send_attempts < 30)) {
-    personality_sent_results = SendPersonalityToPLC(global_data_A36487.personality);
-    personality_send_attempts++;
-    ClrWdt();
-  }
-#endif 
-  
   global_data_A36487.state_analog_data_read = ANALOG_STATE_WAIT_FOR_DATA_READ;
 
 
-}
-
-
-
-unsigned char ReadDosePersonality() {
-  unsigned int data;
-  unsigned int i;
-  
-
-  PIN_ID_CLK_OUT   = 0;  
-  PIN_ID_SHIFT_OUT = 0;  
-  __delay32(10);
-  PIN_ID_SHIFT_OUT = 1;  
-  __delay32(10);
-
-  data = 0;
-
-  if (PIN_ID_DATA_IN) {
-    data |= 0x01;
-  }
-  
-  for (i = 0; i < 8; i++) {
-    PIN_ID_CLK_OUT = 0;
-    data <<= 1;
-    PIN_ID_CLK_OUT = 1;
-    __delay32(5);
-    if (PIN_ID_DATA_IN) {
-      data |= 0x01;
-    } 
-  }
-
-  if (data == ULTRA_LOW_DOSE) {
-    return 3;
-  }
-
-  if (data == LOW_DOSE) {
-    return 2;
-  }
-  
-  if (data == MEDIUM_DOSE) {
-    return 1;
-  }
-  
-  if (data == HIGH_DOSE) {
-    return 0;
-  }
- 
-  return 0xFF;
 }
 
 
@@ -1150,107 +1087,6 @@ void UpdateEnergyAndPolarityOutputs(void) {
   }
 }
 
-
-
-int SendPersonalityToPLC(unsigned char id) {
-
-  //The PIC will use the gun driver,PFN, and RF faults to the PLC
-  //as outputs momentarily to tell the PLC which personality
-  //module is installed
-  
-  int ret = 0;
-  
-  /*
-  _G0
-  _A6
-  _A7
-  */
-  unsigned int tris_A_bak;
-  unsigned int tris_G_bak;
-
-  tris_A_bak = TRISA;
-  tris_G_bak = TRISG;
-
-  _TRISG0 = 0;
-  _TRISA6 = 0;
-  _TRISA7 = 0;
-
-#define PIN_CPU_PFN_OK_OUT              _LATG0
-#define PIN_CPU_GUNDRIVER_OK_OUT        _LATA6
-#define PIN_CPU_RF_OK_OUT               _LATA7
-  
-  if (id == 0) {
-    PIN_CPU_PFN_OK_OUT = 0;
-    PIN_CPU_GUNDRIVER_OK_OUT = 0;
-    PIN_CPU_RF_OK_OUT = 0;
-  } else if (id == 1) {
-    PIN_CPU_PFN_OK_OUT = 1;
-    PIN_CPU_GUNDRIVER_OK_OUT = 1;
-    PIN_CPU_RF_OK_OUT = 0;
-  } else if (id == 2) {
-    PIN_CPU_PFN_OK_OUT = 1;
-    PIN_CPU_GUNDRIVER_OK_OUT = 0;
-    PIN_CPU_RF_OK_OUT = 1;
-  } else if (id == 3) {
-    PIN_CPU_PFN_OK_OUT = 0;
-    PIN_CPU_GUNDRIVER_OK_OUT = 1;
-    PIN_CPU_RF_OK_OUT = 1;
-  } else {
-    PIN_CPU_PFN_OK_OUT = 1;
-    PIN_CPU_GUNDRIVER_OK_OUT = 1;
-    PIN_CPU_RF_OK_OUT = 1;
-  }
-
-  PIN_ANALOG_READ_COMPLETE_OUT = !OLL_ANALOG_READ_COMPLETE;   //PLCin = 1
-  __delay32(DELAY_PLC); // 250ms for 10M TCY
-  if (PIN_PACKAGE_VALID_IN == !ILL_PACKAGE_VALID) {
-    ret = 1;       //Failure to Communicate
-  }
-  PIN_ANALOG_READ_COMPLETE_OUT = OLL_ANALOG_READ_COMPLETE;    //PLCin = 0
-  __delay32(DELAY_PLC); // 250ms for 10M TCY
-  if (PIN_PACKAGE_VALID_IN == ILL_PACKAGE_VALID) {
-    ret = 1;       //Failure to Communicate
-  }
-  
-  if (id == 0) {
-    PIN_CPU_PFN_OK_OUT = 1;
-    PIN_CPU_GUNDRIVER_OK_OUT = 1;
-    PIN_CPU_RF_OK_OUT = 1;
-  } else if (id == 1) {
-    PIN_CPU_PFN_OK_OUT = 0;
-    PIN_CPU_GUNDRIVER_OK_OUT = 0;
-    PIN_CPU_RF_OK_OUT = 1;
-  } else if (id == 2) {
-    PIN_CPU_PFN_OK_OUT = 0;
-    PIN_CPU_GUNDRIVER_OK_OUT = 1;
-    PIN_CPU_RF_OK_OUT = 0;
-  } else if (id == 3) {
-    PIN_CPU_PFN_OK_OUT = 1;
-    PIN_CPU_GUNDRIVER_OK_OUT = 0;
-    PIN_CPU_RF_OK_OUT = 0;
-  } else {
-    PIN_CPU_PFN_OK_OUT = 1;
-    PIN_CPU_GUNDRIVER_OK_OUT = 1;
-    PIN_CPU_RF_OK_OUT = 1;
-  }
-  
-  PIN_ANALOG_READ_COMPLETE_OUT = !OLL_ANALOG_READ_COMPLETE;   //PLCin = 1
-  __delay32(DELAY_PLC); // 250ms for 10M TCY
-  if (PIN_PACKAGE_VALID_IN == !ILL_PACKAGE_VALID) {
-    ret = 1;       //Failure to Communicate
-  }
-  PIN_ANALOG_READ_COMPLETE_OUT = OLL_ANALOG_READ_COMPLETE;    //PLCin = 0
-  __delay32(DELAY_PLC); // 250ms for 10M TCY
-  if (PIN_PACKAGE_VALID_IN == ILL_PACKAGE_VALID) {
-    ret = 1;       //Failure to Communicate
-  }
-
-
-  TRISA = tris_A_bak;
-  TRISG = tris_G_bak;
-
-  return ret;       //Communication Successful = 0
-}
 
 void SetupT3PRFDeciHertz(unsigned int decihertz) {
 #ifdef __INTERNAL_TRIGGER
