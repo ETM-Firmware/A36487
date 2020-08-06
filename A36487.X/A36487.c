@@ -1,5 +1,14 @@
 #include "A36487.h"
 
+// DPARKER REMOVE THESE AFTER TESTING
+extern ETMCanSyncMessage         etm_can_slave_sync_message;  // This is the most recent sync message recieved from the ECB
+#define _SYNC_CONTROL_WORD                    *(unsigned int*)&etm_can_slave_sync_message.sync_0_control_word
+
+
+unsigned int ETMCanSlaveGetSyncMsgAutoConditionActive(void);
+unsigned int ETMCanSlaveGetSyncMsgAutoConditionDenominator(void);
+unsigned int ETMCanSlaveGetSyncMsgAutoConditionNumerator(void);
+
 // Global Variables
 PSB_DATA psb_data;
 
@@ -161,9 +170,13 @@ void DoStateMachine(void) {
       if (PIN_LOW_MODE_IN == PIN_HIGH_MODE_IN) {
 	PIN_CPU_XRAY_ENABLE_OUT = !OLL_CPU_XRAY_ENABLE;
       } else {
-	PIN_CPU_XRAY_ENABLE_OUT = OLL_CPU_XRAY_ENABLE;
+	if (psb_data.auto_condition_disable_this_pulse) {
+	  PIN_CPU_XRAY_ENABLE_OUT = !OLL_CPU_XRAY_ENABLE;
+	} else {
+	  PIN_CPU_XRAY_ENABLE_OUT = OLL_CPU_XRAY_ENABLE;
+	}
       }
-      
+
       if (PIN_CUSTOMER_XRAY_ON_IN) {
 	PIN_CPU_WARNING_LAMP_OUT = OLL_CPU_WARNING_LAMP;
       } else {
@@ -449,15 +462,15 @@ void DoA36487(void) {
     //ETMCanSlaveSetDebugRegister(0, (grid_start_high3 << 8) + grid_start_high2);
     //ETMCanSlaveSetDebugRegister(1, (grid_start_high1 << 8) + grid_start_high0);
     //ETMCanSlaveSetDebugRegister(2, (pfn_delay_high << 8) + dose_sample_delay_high);
-    ETMCanSlaveSetDebugRegister(3, (grid_stop_high3 << 8) + grid_stop_high2);
-    ETMCanSlaveSetDebugRegister(4, (grid_stop_high1 << 8) + grid_stop_high0);
-    ETMCanSlaveSetDebugRegister(5, (afc_delay_high << 8) + magnetron_current_sample_delay_high);
-    ETMCanSlaveSetDebugRegister(6, (grid_start_low3 << 8) + grid_start_low2);
-    ETMCanSlaveSetDebugRegister(7, (grid_start_low1 << 8) + grid_start_low0);
-    ETMCanSlaveSetDebugRegister(8, (pfn_delay_low << 8) + dose_sample_delay_low);
-    ETMCanSlaveSetDebugRegister(9, data_grid_start);
-    ETMCanSlaveSetDebugRegister(10, data_grid_stop);
-    ETMCanSlaveSetDebugRegister(0xb, psb_data.pulses_on);
+    ETMCanSlaveSetDebugRegister(3, ETMCanSlaveGetSyncMsgAutoConditionActive());
+    ETMCanSlaveSetDebugRegister(4, ETMCanSlaveGetSyncMsgAutoConditionNumerator());
+    ETMCanSlaveSetDebugRegister(5, ETMCanSlaveGetSyncMsgAutoConditionDenominator());
+    ETMCanSlaveSetDebugRegister(6, ETMCanSlaveGetSyncMsgECBState());
+    ETMCanSlaveSetDebugRegister(7, etm_can_slave_sync_message.sync_1_ecb_state_for_fault_logic);
+    ETMCanSlaveSetDebugRegister(8, _SYNC_CONTROL_WORD);
+    ETMCanSlaveSetDebugRegister(9, ETMCanSlaveGetSyncMsgPulseSyncDisableHV());
+    ETMCanSlaveSetDebugRegister(10, etm_can_slave_sync_message.sync_2);
+    ETMCanSlaveSetDebugRegister(0xb, etm_can_slave_sync_message.sync_3);
     ETMCanSlaveSetDebugRegister(0xC, psb_data.last_period);
     ETMCanSlaveSetDebugRegister(0xD, log_data_rep_rate_deci_hertz);
     ETMCanSlaveSetDebugRegister(0xE, trigger_counter);
@@ -500,6 +513,9 @@ void DoStartupLEDs(void) {
 
 
 void DoPostTriggerProcess(void) {
+  static unsigned int auto_condition_counter;
+  unsigned int numerator;
+  unsigned int denominator;
   if (TMR1 <= 6) {
     // The previous trigger happened less than 40uS ago
     // Need to delay more to garuntee the trigger from customer is not active
@@ -516,10 +532,32 @@ void DoPostTriggerProcess(void) {
     PIN_CPU_XRAY_ENABLE_OUT = !OLL_CPU_XRAY_ENABLE;
     trigger_width_filtered = 0;
   }
-  
+
+  psb_data.auto_condition_disable_this_pulse = 0;
+  if (ETMCanSlaveGetSyncMsgAutoConditionActive()) {
+
+    // Disable some of the pusles;
+    numerator = ETMCanSlaveGetSyncMsgAutoConditionNumerator();
+    denominator = ETMCanSlaveGetSyncMsgAutoConditionDenominator();
+        
+    auto_condition_counter++;
+    if (auto_condition_counter > denominator) {
+      auto_condition_counter = 0;
+    }
+    if (auto_condition_counter > numerator) {
+      psb_data.auto_condition_disable_this_pulse = 1;
+    } else {
+      psb_data.auto_condition_disable_this_pulse = 0;
+    }
+  }
+
+  if ((numerator == 0xF) && (denominator == 0xF)) {
+    psb_data.auto_condition_disable_this_pulse = 1;
+  }
+    
   ProgramShiftRegisters();
   psb_data.period_filtered = RCFilterNTau(psb_data.period_filtered, psb_data.last_period, RC_FILTER_4_TAU);
-    
+  
   if (ETMCanSlaveGetSyncMsgHighSpeedLogging()) {
     // Log Pulse by Pulse data
     ETMCanSlaveLogPulseData(ETM_CAN_DATA_LOG_REGISTER_PULSE_SYNC_FAST_LOG_0,
@@ -1078,4 +1116,29 @@ void ETMCanSlaveExecuteCMDBoardSpecific(ETMCanMessage* message_ptr) {
       ETMCanSlaveIncrementInvalidIndex();
       break;
     }
+}
+
+unsigned int ETMCanSlaveGetSyncMsgAutoConditionNumerator(void) {
+  unsigned int temp;
+  temp = ETMCanSlaveGetSyncMsgECBState();
+  temp &= 0x00F0;
+  temp >>= 4;
+  return temp;
+}
+
+unsigned int ETMCanSlaveGetSyncMsgAutoConditionDenominator(void) {
+  unsigned int temp;
+  temp = ETMCanSlaveGetSyncMsgECBState();
+  temp &= 0x000F;
+  return temp;
+}
+
+unsigned int ETMCanSlaveGetSyncMsgAutoConditionActive(void) {
+  unsigned int temp;
+  temp = ETMCanSlaveGetSyncMsgECBState();
+  temp &= 0xFF00;
+  if (temp == 0x1700) {
+    return 1;
+  }
+  return 0;
 }

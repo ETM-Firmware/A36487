@@ -52,6 +52,8 @@ typedef struct{
 
     unsigned char trigger_index;
 
+    unsigned int auto_condition_disable_this_pulse;
+    
 
 } PSB_DATA;
 

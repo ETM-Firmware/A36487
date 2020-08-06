@@ -6,8 +6,8 @@
 #ifdef __BUILD_DASH_008
 
 #define FIRMWARE_AGILE_REV     1
-#define FIRMWARE_BRANCH        0
-#define FIRMWARE_BRANCH_REV    0
+#define FIRMWARE_BRANCH        100
+#define FIRMWARE_BRANCH_REV    3
 #define FIRMWARE_DASH_NUMBER   8
 
 #else
