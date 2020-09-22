@@ -34,6 +34,8 @@
   
  */
 
+#define __PRF_800HZ_CAPABLE // If not, implies 400Hz operation only
+
 #define __PLC_INTERFACE  // IF NOT, Implies Can interface 
 #define __TRIGGER_AFC_HIGH_ONLY
 
@@ -294,8 +296,16 @@ typedef struct{
 #define PR2_VALUE_10mS                 12500                        
 
 #define T3CON_VALUE                    (T3_ON & T3_IDLE_CON & T3_GATE_OFF & T3_PS_1_1 & T3_SOURCE_INT)
-#define TMR3_DELAY_2400US              24000                        
+//#define TMR3_DELAY_2400US              24000                        
 #define TMR3_DELAY_200US                2000
+
+#ifdef __PRF_800HZ_CAPABLE
+#define TMR3_DELAY_HVPS_CHARGE_TIME   11500
+#else
+#define TMR3_DELAY_HVPS_CHARGE_TIME   24000
+#endif
+
+
 
 
 #define T3CON_VALUE_PS_1               (T3_ON & T3_IDLE_CON & T3_GATE_OFF & T3_PS_1_1   & T3_SOURCE_INT)
