@@ -906,11 +906,17 @@ void ProgramShiftRegistersDelays(void) {
   Nop();
 }
 
-#define CAB_SCAN_GRID_START_HIGH   130
-#define CAB_SCAN_GRID_STOP_HIGH    135
+#define CAB_SCAN_GRID_START_HIGH   200
+#define CAB_SCAN_GRID_STOP_HIGH    205
 
-#define CAB_SCAN_GRID_START_LOW    130
-#define CAB_SCAN_GRID_STOP_LOW     135
+#define CAB_SCAN_GRID_START_LOW    200
+#define CAB_SCAN_GRID_STOP_LOW     205
+
+#define NO_DOSE_GRID_START_HIGH     20
+#define NO_DOSE_GRID_STOP_HIGH      40
+
+#define NO_DOSE_GRID_START_LOW     20
+#define NO_DOSE_GRID_STOP_LOW      40
 
 void ProgramShiftRegistersGrid(unsigned char dose_command) {
   unsigned int data;
@@ -919,13 +925,25 @@ void ProgramShiftRegistersGrid(unsigned char dose_command) {
   switch (GetThisPulseLevel())
     {
     case PULSE_LEVEL_CARGO_HIGH:
-      data_grid_stop  = InterpolateValue(grid_stop_high0, grid_stop_high1, grid_stop_high2, grid_stop_high3, dose_command);
-      data_grid_start = InterpolateValue(grid_start_high0, grid_start_high1, grid_start_high2, grid_start_high3, dose_command);
+      if (global_data_A36487.this_pulse_width > 0){
+        data_grid_stop  = InterpolateValue(grid_stop_high0, grid_stop_high1, grid_stop_high2, grid_stop_high3, dose_command);
+        data_grid_start = InterpolateValue(grid_start_high0, grid_start_high1, grid_start_high2, grid_start_high3, dose_command);
+      }
+      else {
+	data_grid_stop = NO_DOSE_GRID_STOP_HIGH;
+	data_grid_start = NO_DOSE_GRID_START_HIGH;
+      }
       break;
       
     case PULSE_LEVEL_CARGO_LOW:
-      data_grid_stop  = InterpolateValue(grid_stop_low0, grid_stop_low1, grid_stop_low2, grid_stop_low3, dose_command);
-      data_grid_start = InterpolateValue(grid_start_low0, grid_start_low1, grid_start_low2, grid_start_low3, dose_command);
+      if (global_data_A36487.this_pulse_width > 0){
+        data_grid_stop  = InterpolateValue(grid_stop_low0, grid_stop_low1, grid_stop_low2, grid_stop_low3, dose_command);
+        data_grid_start = InterpolateValue(grid_start_low0, grid_start_low1, grid_start_low2, grid_start_low3, dose_command);
+      }
+      else {
+        data_grid_stop = NO_DOSE_GRID_STOP_LOW;
+        data_grid_start = NO_DOSE_GRID_START_LOW;
+      }
       break;
       
     case PULSE_LEVEL_CAB_HIGH:
@@ -972,11 +990,7 @@ unsigned int GetThisPulseLevel(void) {
 
   // CAB SCAN Mode
   if ((PIN_LOW_MODE_IN == ILL_MODE_BIT_SELECTED) && (PIN_HIGH_MODE_IN == !ILL_MODE_BIT_SELECTED)) {
-    if (global_data_A36487.this_pulse_level == DOSE_COMMAND_HIGH_ENERGY) {
-      return PULSE_LEVEL_CAB_HIGH;
-    } else {
-      return PULSE_LEVEL_CAB_LOW;
-    }
+    return PULSE_LEVEL_CAB_HIGH;
   }
 
 
