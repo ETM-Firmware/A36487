@@ -12,6 +12,9 @@
 #include "FIRMWARE_VERSION.h"
 
 
+#define __MAX_PRF_800 // If this is active the max PRF will be 833HZ, otherwise the max PRF will be 416Hz 
+
+
 /*
   OPTIONS
   6/4 Mev
@@ -296,6 +299,8 @@ typedef struct{
 #define T3CON_VALUE                    (T3_ON & T3_IDLE_CON & T3_GATE_OFF & T3_PS_1_1 & T3_SOURCE_INT)
 #define TMR3_DELAY_2400US              24000                        
 #define TMR3_DELAY_200US                2000
+#define TMR3_DELAY_1200US              12000
+
 
 
 #define T3CON_VALUE_PS_1               (T3_ON & T3_IDLE_CON & T3_GATE_OFF & T3_PS_1_1   & T3_SOURCE_INT)

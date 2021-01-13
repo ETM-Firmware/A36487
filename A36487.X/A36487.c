@@ -257,7 +257,11 @@ void InitializeA36487(void) {
 
   // Setupt Timer 3 to measure the Pulse Holdoff time to prevent over PRF  
   T3CON = T3CON_VALUE;
+#ifdef __MAX_PRF_800
+  PR3 = TMR3_DELAY_1200US;
+#else
   PR3 = TMR3_DELAY_2400US;
+#endif
   TMR3 = 0;
   _T3IF = 0;
   
