@@ -133,8 +133,11 @@ typedef struct{
   unsigned int  trigger_period_too_short_count;
   unsigned int  trigger_length_too_short_count;
   unsigned int  trigger_decrement_counter;
-
+  unsigned int  rf_pulse_count;
+  
   unsigned char prf_from_concentrator;
+
+
   
 } TYPE_GLOBAL_DATA_A36487;
 

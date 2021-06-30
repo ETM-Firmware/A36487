@@ -11,6 +11,7 @@
 *.production.map
 *.production.elf
 *.hex
+*/.generated_files/*
 
 # codewright
 *.bak

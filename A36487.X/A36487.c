@@ -155,7 +155,6 @@ void DoStateMachine(void) {
     PIN_GUN_BEAM_ENABLE = !OLL_ENABLE_GUN_BEAM;
     while (global_data_A36487.control_state == STATE_HV_ENABLE) {
       DoA36487();
-
       if (PIN_CUSTOMER_BEAM_ENABLE_IN == ILL_CUSTOMER_BEAM_ENABLE) {
 	PIN_GUN_HV_ON = OLL_ENABLE_GUN_HV;
       } else {
@@ -608,7 +607,7 @@ void DoPostTriggerProcess(void) {
   unsigned long temp32;
   unsigned int temp16;
   
-  ETMCanSlavePulseSyncSendNextPulseLevel(GetThisPulseLevel(), global_data_A36487.pulses_on, log_data_rep_rate_deci_hertz);
+  ETMCanSlavePulseSyncSendNextPulseLevel(GetThisPulseLevel(), global_data_A36487.rf_pulse_count, log_data_rep_rate_deci_hertz);
   
   ProgramShiftRegistersDelays();  // Load the shift registers
 
@@ -986,6 +985,9 @@ void __attribute__((interrupt, shadow, no_auto_psv)) _INT1Interrupt(void) {
       // The minimum period between pulses has passed
       if ((global_data_A36487.control_state == STATE_X_RAY_ENABLE)) {
 	PIN_CPU_START_OUT = OLL_CPU_START;
+	global_data_A36487.rf_pulse_count++;
+      } else {
+	global_data_A36487.rf_pulse_count = 0;
       }
       // Start The Holdoff Timer for the next pulse
       TMR3 = 0;
